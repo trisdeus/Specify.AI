@@ -45,6 +45,9 @@ def main(args: Sequence[str] | None = None) -> int:
     Returns:
         Exit code (0 for success, non-zero for failure).
 
+    Raises:
+        TypeError: If args is not a Sequence or None.
+
     Example:
         >>> from specify.cli import main
         >>> exit_code = main(["--version"])
@@ -52,6 +55,9 @@ def main(args: Sequence[str] | None = None) -> int:
         >>> exit_code
         0
     """
+    if args is not None and not isinstance(args, Sequence):
+        raise TypeError(f"args must be a Sequence or None, got {type(args).__name__}")
+
     try:
         return cli.main(args=args, standalone_mode=False)  # type: ignore[no-any-return]
     except click.exceptions.Exit as e:

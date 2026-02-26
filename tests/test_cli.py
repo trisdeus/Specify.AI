@@ -18,17 +18,6 @@ from specify import __version__
 from specify.cli import cli, main
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test Fixtures
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def runner() -> CliRunner:
-    """Create a CLI test runner."""
-    return CliRunner()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Version Tests
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -36,17 +25,17 @@ def runner() -> CliRunner:
 class TestVersion:
     """Tests for the --version flag."""
 
-    def test_version_flag(self, runner: CliRunner) -> None:
+    def test_version_flag(self, cli_runner: CliRunner) -> None:
         """Test that --version prints the correct version string."""
-        result = runner.invoke(cli, ["--version"])
+        result = cli_runner.invoke(cli, ["--version"])
 
         assert result.exit_code == 0
         assert "specify-ai" in result.output
         assert __version__ in result.output
 
-    def test_version_format(self, runner: CliRunner) -> None:
+    def test_version_format(self, cli_runner: CliRunner) -> None:
         """Test that version output follows expected format."""
-        result = runner.invoke(cli, ["--version"])
+        result = cli_runner.invoke(cli, ["--version"])
 
         # Expected format: "specify-ai, version X.Y.Z"
         assert "specify-ai, version" in result.output
@@ -61,17 +50,17 @@ class TestVersion:
 class TestHelp:
     """Tests for the --help flag."""
 
-    def test_help_flag(self, runner: CliRunner) -> None:
+    def test_help_flag(self, cli_runner: CliRunner) -> None:
         """Test that --help shows usage information."""
-        result = runner.invoke(cli, ["--help"])
+        result = cli_runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
         assert "Usage:" in result.output
         assert "Specify.AI" in result.output
 
-    def test_help_shows_commands(self, runner: CliRunner) -> None:
+    def test_help_shows_commands(self, cli_runner: CliRunner) -> None:
         """Test that --help shows available commands."""
-        result = runner.invoke(cli, ["--help"])
+        result = cli_runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
         assert "generate" in result.output
@@ -79,9 +68,9 @@ class TestHelp:
         assert "check-consistency" in result.output
         assert "fix-inconsistencies" in result.output
 
-    def test_help_no_args(self, runner: CliRunner) -> None:
+    def test_help_no_args(self, cli_runner: CliRunner) -> None:
         """Test that running with no arguments shows help message."""
-        result = runner.invoke(cli, [])
+        result = cli_runner.invoke(cli, [])
 
         # Click groups exit with code 2 when no args provided (shows help)
         # This is expected behavior - the help is shown in the output
@@ -118,6 +107,11 @@ class TestMain:
         # Should return non-zero exit code
         assert exit_code != 0
 
+    def test_main_invalid_args_type(self) -> None:
+        """Test that main() raises TypeError for invalid args type."""
+        with pytest.raises(TypeError, match="args must be a Sequence or None"):
+            main("invalid-args")  # type: ignore[arg-type]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Generate Command Tests
@@ -127,9 +121,9 @@ class TestMain:
 class TestGenerateCommand:
     """Tests for the generate command."""
 
-    def test_generate_help(self, runner: CliRunner) -> None:
+    def test_generate_help(self, cli_runner: CliRunner) -> None:
         """Test that generate --help shows usage."""
-        result = runner.invoke(cli, ["generate", "--help"])
+        result = cli_runner.invoke(cli, ["generate", "--help"])
 
         assert result.exit_code == 0
         assert "Generate documentation" in result.output
@@ -137,16 +131,16 @@ class TestGenerateCommand:
         assert "--type" in result.output
         assert "--provider" in result.output
 
-    def test_generate_requires_prompt(self, runner: CliRunner) -> None:
+    def test_generate_requires_prompt(self, cli_runner: CliRunner) -> None:
         """Test that generate requires a prompt."""
-        result = runner.invoke(cli, ["generate"])
+        result = cli_runner.invoke(cli, ["generate"])
 
         assert result.exit_code != 0
         assert "Missing option" in result.output or "--prompt" in result.output
 
-    def test_generate_with_prompt(self, runner: CliRunner) -> None:
+    def test_generate_with_prompt(self, cli_runner: CliRunner) -> None:
         """Test generate command with a prompt."""
-        result = runner.invoke(
+        result = cli_runner.invoke(
             cli,
             ["generate", "--prompt", "Build a task app", "--type", "prd"],
         )
@@ -155,9 +149,9 @@ class TestGenerateCommand:
         assert result.exit_code == 0
         assert "not yet implemented" in result.output.lower()
 
-    def test_generate_invalid_type(self, runner: CliRunner) -> None:
+    def test_generate_invalid_type(self, cli_runner: CliRunner) -> None:
         """Test generate with invalid document type."""
-        result = runner.invoke(
+        result = cli_runner.invoke(
             cli,
             ["generate", "--prompt", "Build a task app", "--type", "invalid"],
         )
@@ -165,9 +159,9 @@ class TestGenerateCommand:
         assert result.exit_code != 0
         assert "invalid" in result.output.lower() or "choice" in result.output.lower()
 
-    def test_generate_invalid_provider(self, runner: CliRunner) -> None:
+    def test_generate_invalid_provider(self, cli_runner: CliRunner) -> None:
         """Test generate with invalid provider."""
-        result = runner.invoke(
+        result = cli_runner.invoke(
             cli,
             ["generate", "--prompt", "Build a task app", "--provider", "invalid"],
         )
@@ -183,9 +177,9 @@ class TestGenerateCommand:
 class TestConfigCommand:
     """Tests for the config command group."""
 
-    def test_config_help(self, runner: CliRunner) -> None:
+    def test_config_help(self, cli_runner: CliRunner) -> None:
         """Test that config --help shows usage."""
-        result = runner.invoke(cli, ["config", "--help"])
+        result = cli_runner.invoke(cli, ["config", "--help"])
 
         assert result.exit_code == 0
         assert "Manage configuration" in result.output
@@ -193,36 +187,36 @@ class TestConfigCommand:
         assert "list-keys" in result.output
         assert "delete-key" in result.output
 
-    def test_config_set_key_help(self, runner: CliRunner) -> None:
+    def test_config_set_key_help(self, cli_runner: CliRunner) -> None:
         """Test that config set-key --help shows usage."""
-        result = runner.invoke(cli, ["config", "set-key", "--help"])
+        result = cli_runner.invoke(cli, ["config", "set-key", "--help"])
 
         assert result.exit_code == 0
         assert "--provider" in result.output
         assert "--key" in result.output
 
-    def test_config_set_key_requires_provider(self, runner: CliRunner) -> None:
+    def test_config_set_key_requires_provider(self, cli_runner: CliRunner) -> None:
         """Test that set-key requires provider."""
-        result = runner.invoke(cli, ["config", "set-key", "--key", "test-key"])
+        result = cli_runner.invoke(cli, ["config", "set-key", "--key", "test-key"])
 
         assert result.exit_code != 0
 
-    def test_config_set_key_requires_key(self, runner: CliRunner) -> None:
+    def test_config_set_key_requires_key(self, cli_runner: CliRunner) -> None:
         """Test that set-key requires key."""
-        result = runner.invoke(cli, ["config", "set-key", "--provider", "openai"])
+        result = cli_runner.invoke(cli, ["config", "set-key", "--provider", "openai"])
 
         assert result.exit_code != 0
 
-    def test_config_list_keys(self, runner: CliRunner) -> None:
+    def test_config_list_keys(self, cli_runner: CliRunner) -> None:
         """Test config list-keys command."""
-        result = runner.invoke(cli, ["config", "list-keys"])
+        result = cli_runner.invoke(cli, ["config", "list-keys"])
 
         assert result.exit_code == 0
         assert "not yet implemented" in result.output.lower()
 
-    def test_config_delete_key_requires_provider(self, runner: CliRunner) -> None:
+    def test_config_delete_key_requires_provider(self, cli_runner: CliRunner) -> None:
         """Test that delete-key requires provider."""
-        result = runner.invoke(cli, ["config", "delete-key"])
+        result = cli_runner.invoke(cli, ["config", "delete-key"])
 
         assert result.exit_code != 0
 
@@ -235,32 +229,32 @@ class TestConfigCommand:
 class TestConsistencyCommands:
     """Tests for consistency checking commands."""
 
-    def test_check_consistency_help(self, runner: CliRunner) -> None:
+    def test_check_consistency_help(self, cli_runner: CliRunner) -> None:
         """Test that check-consistency --help shows usage."""
-        result = runner.invoke(cli, ["check-consistency", "--help"])
+        result = cli_runner.invoke(cli, ["check-consistency", "--help"])
 
         assert result.exit_code == 0
         assert "--dir" in result.output
 
-    def test_check_consistency_default_dir(self, runner: CliRunner) -> None:
+    def test_check_consistency_default_dir(self, cli_runner: CliRunner) -> None:
         """Test check-consistency with default directory."""
-        result = runner.invoke(cli, ["check-consistency"])
+        result = cli_runner.invoke(cli, ["check-consistency"])
 
         # Should succeed even if directory doesn't exist (not implemented yet)
         assert result.exit_code == 0
         assert "not yet implemented" in result.output.lower()
 
-    def test_fix_inconsistencies_help(self, runner: CliRunner) -> None:
+    def test_fix_inconsistencies_help(self, cli_runner: CliRunner) -> None:
         """Test that fix-inconsistencies --help shows usage."""
-        result = runner.invoke(cli, ["fix-inconsistencies", "--help"])
+        result = cli_runner.invoke(cli, ["fix-inconsistencies", "--help"])
 
         assert result.exit_code == 0
         assert "--dir" in result.output
         assert "--dry-run" in result.output
 
-    def test_fix_inconsistencies_dry_run(self, runner: CliRunner) -> None:
+    def test_fix_inconsistencies_dry_run(self, cli_runner: CliRunner) -> None:
         """Test fix-inconsistencies with --dry-run flag."""
-        result = runner.invoke(cli, ["fix-inconsistencies", "--dry-run"])
+        result = cli_runner.invoke(cli, ["fix-inconsistencies", "--dry-run"])
 
         assert result.exit_code == 0
         assert "not yet implemented" in result.output.lower()
@@ -274,15 +268,15 @@ class TestConsistencyCommands:
 class TestVerboseFlag:
     """Tests for the --verbose flag."""
 
-    def test_verbose_flag_accepted(self, runner: CliRunner) -> None:
+    def test_verbose_flag_accepted(self, cli_runner: CliRunner) -> None:
         """Test that --verbose flag is accepted."""
-        result = runner.invoke(cli, ["--verbose", "--help"])
+        result = cli_runner.invoke(cli, ["--verbose", "--help"])
 
         assert result.exit_code == 0
 
-    def test_verbose_short_flag(self, runner: CliRunner) -> None:
+    def test_verbose_short_flag(self, cli_runner: CliRunner) -> None:
         """Test that -v flag is accepted."""
-        result = runner.invoke(cli, ["-v", "--help"])
+        result = cli_runner.invoke(cli, ["-v", "--help"])
 
         assert result.exit_code == 0
 
@@ -335,40 +329,40 @@ class TestPackageImport:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_invalid_command(self, runner: CliRunner) -> None:
+    def test_invalid_command(self, cli_runner: CliRunner) -> None:
         """Test that invalid commands show error and suggest --help."""
-        result = runner.invoke(cli, ["invalid-command"])
+        result = cli_runner.invoke(cli, ["invalid-command"])
 
         assert result.exit_code != 0
         # Click shows "No such command" for invalid commands
         assert "No such command" in result.output or "Error" in result.output
 
-    def test_generate_all_types(self, runner: CliRunner) -> None:
+    def test_generate_all_types(self, cli_runner: CliRunner) -> None:
         """Test generate with --type all."""
-        result = runner.invoke(
+        result = cli_runner.invoke(
             cli,
             ["generate", "--prompt", "Build a task app", "--type", "all"],
         )
 
         assert result.exit_code == 0
 
-    def test_generate_each_type(self, runner: CliRunner) -> None:
+    def test_generate_each_type(self, cli_runner: CliRunner) -> None:
         """Test generate with each document type."""
         doc_types = ["app-flow", "bdd", "design-doc", "prd", "tech-arch"]
 
         for doc_type in doc_types:
-            result = runner.invoke(
+            result = cli_runner.invoke(
                 cli,
                 ["generate", "--prompt", "Build a task app", "--type", doc_type],
             )
             assert result.exit_code == 0, f"Failed for type: {doc_type}"
 
-    def test_generate_each_provider(self, runner: CliRunner) -> None:
+    def test_generate_each_provider(self, cli_runner: CliRunner) -> None:
         """Test generate with each provider."""
         providers = ["ollama", "openai", "anthropic"]
 
         for provider in providers:
-            result = runner.invoke(
+            result = cli_runner.invoke(
                 cli,
                 [
                     "generate",
@@ -382,23 +376,23 @@ class TestEdgeCases:
             )
             assert result.exit_code == 0, f"Failed for provider: {provider}"
 
-    def test_config_set_key_each_provider(self, runner: CliRunner) -> None:
+    def test_config_set_key_each_provider(self, cli_runner: CliRunner) -> None:
         """Test config set-key with each provider."""
         providers = ["ollama", "openai", "anthropic"]
 
         for provider in providers:
-            result = runner.invoke(
+            result = cli_runner.invoke(
                 cli,
                 ["config", "set-key", "--provider", provider, "--key", "test-key"],
             )
             assert result.exit_code == 0, f"Failed for provider: {provider}"
 
-    def test_config_delete_key_each_provider(self, runner: CliRunner) -> None:
+    def test_config_delete_key_each_provider(self, cli_runner: CliRunner) -> None:
         """Test config delete-key with each provider."""
         providers = ["ollama", "openai", "anthropic"]
 
         for provider in providers:
-            result = runner.invoke(
+            result = cli_runner.invoke(
                 cli,
                 ["config", "delete-key", "--provider", provider],
             )
