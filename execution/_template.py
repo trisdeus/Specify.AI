@@ -14,7 +14,6 @@ Requirements:
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -24,52 +23,43 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load environment variables from .env
 from dotenv import load_dotenv
+
 load_dotenv(PROJECT_ROOT / ".env")
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Description of what this script does"
-    )
+    parser = argparse.ArgumentParser(description="Description of what this script does")
     parser.add_argument(
-        "--input",
-        type=str,
-        required=True,
-        help="Path to input file or data"
+        "--input", type=str, required=True, help="Path to input file or data"
     )
     parser.add_argument(
         "--output",
         type=str,
         default=None,
-        help="Path to output file (default: auto-generated in .tmp/)"
+        help="Path to output file (default: auto-generated in .tmp/)",
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     return parser.parse_args()
 
 
 def main(input_path: str, output_path: str = None) -> dict:
     """
     Main execution function.
-    
+
     Args:
         input_path: Path to input file or data source
         output_path: Optional path for output file
-        
+
     Returns:
         Dictionary containing results and metadata
-        
+
     Raises:
         FileNotFoundError: If input file doesn't exist
         ValueError: If input data is invalid
@@ -79,45 +69,42 @@ def main(input_path: str, output_path: str = None) -> dict:
         output_path = PROJECT_ROOT / ".tmp" / "output"
     else:
         output_path = Path(output_path)
-    
+
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info(f"Processing input: {input_path}")
     logger.info(f"Output will be saved to: {output_path}")
-    
+
     # Validate input
     input_path = Path(input_path)
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
-    
+
     # TODO: Implement your processing logic here
     result = {
         "status": "success",
         "input": str(input_path),
         "output": str(output_path),
-        "data": None  # Your processed data here
+        "data": None,  # Your processed data here
     }
-    
+
     # Save output
     # with open(output_path, 'w') as f:
     #     json.dump(result, f, indent=2)
-    
+
     logger.info(f"Processing complete: {result['status']}")
     return result
 
 
 if __name__ == "__main__":
     args = parse_args()
-    
+
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     try:
-        result = main(
-            input_path=args.input,
-            output_path=args.output
-        )
+        result = main(input_path=args.input, output_path=args.output)
         print(f"Done: {result['status']}")
     except Exception as e:
         logger.error(f"Execution failed: {e}")

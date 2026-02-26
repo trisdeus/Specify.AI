@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Specify.AI - Lint Workflow
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This workflow runs code quality checks on every push and pull request to main.
+# It uses ruff (linting), black (formatting), and mypy (type checking).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "specify/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "requirements.txt"
+  pull_request:
+    branches: [main]
+    paths:
+      - "specify/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "requirements.txt"
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black mypy
+
+      - name: Run ruff (linting)
+        run: |
+          ruff check . --output-format=github
+
+      - name: Run black (formatting check)
+        run: |
+          black --check .
+
+      - name: Run mypy (type checking)
+        run: |
+          mypy specify --ignore-missing-imports
+
+  lint-success:
+    name: Lint Success
+    needs: lint
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Check lint status
+        if: needs.lint.result != 'success'
+        run: exit 1
