@@ -1,0 +1,23 @@
+# Core dependencies
+python-dotenv>=1.0.0
+
+# Google API clients (for Google Sheets, Slides, etc.)
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.1.0
+google-auth-oauthlib>=1.0.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Data processing
+pandas>=2.0.0
+
+# Web scraping (if needed)
+beautifulsoup4>=4.12.0
+playwright>=1.40.0
+
+# LLM API clients
+openai>=1.0.0
+anthropic>=0.8.0
+
+# Add additional dependencies as needed for your specific use cases
