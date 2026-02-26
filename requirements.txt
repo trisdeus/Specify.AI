@@ -2,8 +2,12 @@
 # Specify.AI - Python Dependencies
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
 # Core dependencies
-python-dotenv>=1.0.0
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Async support
+aiohttp>=3.9.0
 
 # CLI Framework
 click>=8.1.0
@@ -12,18 +16,21 @@ click>=8.1.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 
-# Logging
-structlog>=24.0.0
-
 # Security (API key encryption)
 cryptography>=42.0.0
 
-# Async support
-aiohttp>=3.9.0
+# Logging
+structlog>=24.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM Provider Clients
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Anthropic
+anthropic>=0.18.0
 
 # Ollama (local LLM)
 ollama>=0.1.0
@@ -31,31 +38,30 @@ ollama>=0.1.0
 # OpenAI
 openai>=1.0.0
 
-# Anthropic
-anthropic>=0.18.0
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Development & Testing
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Formatting
+black>=24.0.0
+
+# Linting
+ruff>=0.2.0
+
+# Pre-commit hooks
+pre-commit>=3.6.0
+
 # Testing
 pytest>=8.0.0
+pytest-asyncio>=0.23.0
 pytest-cov>=4.1.0
 pytest-mock>=3.12.0
-pytest-asyncio>=0.23.0
-
-# HTTP mocking for tests
-respx>=0.20.0
-
-# Linting & Formatting
-ruff>=0.2.0
-black>=24.0.0
 
 # Type checking
 mypy>=1.8.0
 
-# Pre-commit hooks
-pre-commit>=3.6.0
+# HTTP mocking for tests
+respx>=0.20.0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Google API Clients (for Google Sheets, Slides, etc.)
@@ -69,8 +75,11 @@ google-auth-oauthlib>=1.0.0
 # Data Processing & HTTP
 # ─────────────────────────────────────────────────────────────────────────────
 
-requests>=2.31.0
+# Data processing
 pandas>=2.0.0
+
+# HTTP requests
+requests>=2.31.0
 
 # Web scraping (optional)
 beautifulsoup4>=4.12.0
