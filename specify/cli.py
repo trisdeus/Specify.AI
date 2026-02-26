@@ -189,8 +189,8 @@ def generate(
 
     # TODO: Implement document generation (Sprint 2-3)
     click.echo(
-        f"[PLACEHOLDER] Document generation is not yet implemented. "
-        f"This is a stub that will be fully implemented in Sprint 2-3."
+        "[PLACEHOLDER] Document generation is not yet implemented. "
+        "This is a stub that will be fully implemented in Sprint 2-3."
     )
     click.echo(
         f"Would generate {doc_type} document(s) using {provider}."
