@@ -1,23 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Specify.AI - Python Dependencies
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Core dependencies
 python-dotenv>=1.0.0
 
-# Google API clients (for Google Sheets, Slides, etc.)
+# CLI Framework
+click>=8.1.0
+
+# Configuration & Validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Logging
+structlog>=24.0.0
+
+# Security (API key encryption)
+cryptography>=42.0.0
+
+# Async support
+aiohttp>=3.9.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM Provider Clients
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Ollama (local LLM)
+ollama>=0.1.0
+
+# OpenAI
+openai>=1.0.0
+
+# Anthropic
+anthropic>=0.18.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Development & Testing
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Testing
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-asyncio>=0.23.0
+
+# HTTP mocking for tests
+respx>=0.20.0
+
+# Linting & Formatting
+ruff>=0.2.0
+black>=24.0.0
+
+# Type checking
+mypy>=1.8.0
+
+# Pre-commit hooks
+pre-commit>=3.6.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Google API Clients (for Google Sheets, Slides, etc.)
+# ─────────────────────────────────────────────────────────────────────────────
+
 google-api-python-client>=2.100.0
 google-auth-httplib2>=0.1.0
 google-auth-oauthlib>=1.0.0
 
-# HTTP requests
-requests>=2.31.0
+# ─────────────────────────────────────────────────────────────────────────────
+# Data Processing & HTTP
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Data processing
+requests>=2.31.0
 pandas>=2.0.0
 
-# Web scraping (if needed)
+# Web scraping (optional)
 beautifulsoup4>=4.12.0
 playwright>=1.40.0
-
-# LLM API clients
-openai>=1.0.0
-anthropic>=0.8.0
-
-# Add additional dependencies as needed for your specific use cases
