@@ -404,10 +404,18 @@ class TestEdgeCases:
             )
             assert result.exit_code == 0, f"Failed for provider: {provider}"
 
-    def test_config_delete_key_each_provider(self, cli_runner: CliRunner) -> None:
-        """Test config delete-key with each provider."""
+    def test_config_delete_key_each_provider(
+        self, cli_runner: CliRunner, temp_config_dir: Path
+    ) -> None:
+        """Test config delete-key with each provider after storing keys."""
         providers = ["ollama", "openai", "anthropic"]
 
+        # Set up keys using KeyManager with temp directory
+        key_manager = KeyManager(config_dir=temp_config_dir)
+        for provider in providers:
+            key_manager.store_key(provider, f"test-key-{provider}")
+
+        # Now delete each key via CLI
         for provider in providers:
             result = cli_runner.invoke(
                 cli,
