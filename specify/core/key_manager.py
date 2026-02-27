@@ -23,6 +23,8 @@ Example usage:
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 from typing import Final
 
@@ -289,6 +291,8 @@ class KeyManager:
         try:
             with self.keys_file.open("w", encoding="utf-8") as f:
                 json.dump(keys, f, indent=2, sort_keys=True)
+            # Set restrictive permissions: owner read/write only (0600)
+            os.chmod(self.keys_file, stat.S_IRUSR | stat.S_IWUSR)
         except PermissionError as e:
             raise KeyValidationError(
                 f"Permission denied when writing to {self.keys_file}: {e}"
