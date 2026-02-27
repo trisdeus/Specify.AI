@@ -212,7 +212,11 @@ class TestConfigCommand:
         result = cli_runner.invoke(cli, ["config", "list-keys"])
 
         assert result.exit_code == 0
-        assert "not yet implemented" in result.output.lower()
+        # Output should contain either "no api keys configured" OR list of keys
+        output_lower = result.output.lower()
+        has_no_keys = "no api keys configured" in output_lower
+        has_openai = "openai" in output_lower
+        assert has_no_keys or has_openai
 
     def test_config_delete_key_requires_provider(self, cli_runner: CliRunner) -> None:
         """Test that delete-key requires provider."""
