@@ -11,11 +11,14 @@ This module contains tests for:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from click.testing import CliRunner
 
 from specify import __version__
 from specify.cli import cli, main
+from specify.core.key_manager import KeyManager
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Version Tests
@@ -207,16 +210,26 @@ class TestConfigCommand:
 
         assert result.exit_code != 0
 
-    def test_config_list_keys(self, cli_runner: CliRunner) -> None:
-        """Test config list-keys command."""
+    def test_config_list_keys_empty(self, cli_runner: CliRunner) -> None:
+        """Test listing keys when none are configured."""
         result = cli_runner.invoke(cli, ["config", "list-keys"])
 
         assert result.exit_code == 0
-        # Output should contain either "no api keys configured" OR list of keys
-        output_lower = result.output.lower()
-        has_no_keys = "no api keys configured" in output_lower
-        has_openai = "openai" in output_lower
-        assert has_no_keys or has_openai
+        assert "No API keys configured" in result.output
+
+    def test_config_list_keys_with_data(
+        self, cli_runner: CliRunner, temp_config_dir: Path
+    ) -> None:
+        """Test listing keys when some are configured."""
+        # Set up a key using KeyManager with temp directory
+        key_manager = KeyManager(config_dir=temp_config_dir)
+        key_manager.store_key("openai", "sk-test-key-12345")
+
+        result = cli_runner.invoke(cli, ["config", "list-keys"])
+
+        assert result.exit_code == 0
+        assert "openai" in result.output.lower()
+        assert "sk-" in result.output  # Masked key prefix should be visible
 
     def test_config_delete_key_requires_provider(self, cli_runner: CliRunner) -> None:
         """Test that delete-key requires provider."""
