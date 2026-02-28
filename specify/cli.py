@@ -22,14 +22,12 @@ Example usage:
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
 import click
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
 from specify import __version__
+from specify.core import KeyManager, KeyValidationError
 
 
 def main(args: Sequence[str] | None = None) -> int:
@@ -56,6 +54,10 @@ def main(args: Sequence[str] | None = None) -> int:
         0
     """
     if args is not None and not isinstance(args, Sequence):
+        raise TypeError(f"args must be a Sequence or None, got {type(args).__name__}")
+
+    # Handle string input - reject it (strings are Sequences but not valid args)
+    if isinstance(args, str):
         raise TypeError(f"args must be a Sequence or None, got {type(args).__name__}")
 
     try:
@@ -198,9 +200,7 @@ def generate(
         "[PLACEHOLDER] Document generation is not yet implemented. "
         "This is a stub that will be fully implemented in Sprint 2-3."
     )
-    click.echo(
-        f"Would generate {doc_type} document(s) using {provider}."
-    )
+    click.echo(f"Would generate {doc_type} document(s) using {provider}.")
     click.echo(
         f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}"
     )
@@ -246,7 +246,7 @@ def set_key(provider: str, key: str) -> None:
     """
     Store an API key for a provider.
 
-    API keys are encrypted and stored locally in the user's home directory.
+    API keys are stored locally in the user's home directory.
     For Ollama, the key can be the base URL of your Ollama instance.
 
     \b
@@ -255,9 +255,12 @@ def set_key(provider: str, key: str) -> None:
         specify config set-key --provider anthropic --key sk-ant-xxx
         specify config set-key --provider ollama --key http://localhost:11434
     """
-    # TODO: Implement key storage (Sprint 2)
-    click.echo("API key storage is not yet implemented.")
-    click.echo(f"Would store key for {provider}.")
+    try:
+        key_manager = KeyManager()
+        key_manager.store_key(provider, key)
+        click.echo(f"[OK] API key stored for {provider}")
+    except KeyValidationError as e:
+        raise click.ClickException(str(e)) from e
 
 
 @config.command(name="list-keys")
@@ -272,9 +275,18 @@ def list_keys() -> None:
     Example:
         specify config list-keys
     """
-    # TODO: Implement key listing (Sprint 2)
-    click.echo("API key listing is not yet implemented.")
-    click.echo("Configured providers: (none)")
+    key_manager = KeyManager()
+    keys = key_manager.list_keys()
+
+    if not keys:
+        click.echo("No API keys configured.")
+        return
+
+    # Print formatted output
+    click.echo("Configured API Keys:")
+    click.echo("-" * 40)
+    for provider, masked_key in keys.items():
+        click.echo(f"  {provider}: {masked_key}")
 
 
 @config.command(name="delete-key")
@@ -295,9 +307,12 @@ def delete_key(provider: str) -> None:
     Example:
         specify config delete-key --provider openai
     """
-    # TODO: Implement key deletion (Sprint 2)
-    click.echo("API key deletion is not yet implemented.")
-    click.echo(f"Would delete key for {provider}.")
+    key_manager = KeyManager()
+
+    if not key_manager.delete_key(provider):
+        raise click.ClickException(f"No key found for provider: {provider}")
+
+    click.echo(f"[OK] API key deleted for {provider}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
