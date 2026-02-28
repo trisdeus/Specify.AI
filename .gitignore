@@ -67,6 +67,41 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
+# Linting & Formatting
+# ─────────────────────────────────────────────────────────────────────────────
+
+.ruff_cache/
+.pygrep/
+.egginfo/
+
+# Jupyter Notebook
+# ─────────────────────────────────────────────────────────────────────────────
+
+.ipynb_checkpoints/
+.jupyter/
+lab.jupyterlab_data/
+
+# Backup files
+# ─────────────────────────────────────────────────────────────────────────────
+
+*.bak
+*.backup
+*~
+*.swp
+*.swo
+
+# pip / pipenv / poetry
+# ─────────────────────────────────────────────────────────────────────────────
+
+.pip/
+.pipenv/
+.poetry/
+
+# Hatch
+# ─────────────────────────────────────────────────────────────────────────────
+
+.hatch/
+
 # ─────────────────────────────────────────────────────────────────────────────
 # IDE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -94,11 +129,19 @@ Thumbs.db
 Desktop.ini
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AI Tools
+# AI Tools - AI assistant tool artifacts
 # ─────────────────────────────────────────────────────────────────────────────
 
-.aider*
-.cursor*
+# Aider - AI pair programming tool
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v*/
+
+# Claude Code - Anthropic CLI assistant
+.claude/
+
+# Skills lockfile - AI tool skill management
+skills-lock.json
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Output

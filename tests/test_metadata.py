@@ -1,6 +1,6 @@
 """Unit tests for package metadata and configuration."""
+
 import importlib.metadata
-import sys
 
 import pytest
 
@@ -24,7 +24,7 @@ def test_package_version():
 def test_entry_point_exists():
     """Test that the CLI entry point is registered."""
     entry_points = importlib.metadata.entry_points()
-    
+
     # Handle different return types for entry_points() across Python versions
     if isinstance(entry_points, dict):
         console_scripts = entry_points.get("console_scripts", [])

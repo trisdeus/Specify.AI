@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Directory Fixtures
@@ -292,7 +293,7 @@ def cli_runner() -> pytest.CliRunner:
         ...     assert result.exit_code == 0
         ...     assert "specify-ai" in result.output
     """
-    return pytest.CliRunner()
+    return CliRunner()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

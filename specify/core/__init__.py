@@ -6,11 +6,27 @@ This module contains core functionality including:
 - API key storage and encryption (key_manager.py)
 - File output handling (output.py)
 
-These components will be implemented in Sprint 2.
+These components implement the core infrastructure for Sprint 2.
 """
 
 from __future__ import annotations
 
+from specify.core.key_manager import (
+    CryptoManager,
+    DecryptionError,
+    EncryptionError,
+    KeyManager,
+    KeyNotFoundError,
+    KeyValidationError,
+    MachineIdError,
+)
+
 __all__ = [
-    # Will be populated when modules are implemented
+    "CryptoManager",
+    "DecryptionError",
+    "EncryptionError",
+    "KeyManager",
+    "KeyNotFoundError",
+    "KeyValidationError",
+    "MachineIdError",
 ]

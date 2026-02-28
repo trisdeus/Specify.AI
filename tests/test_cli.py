@@ -218,12 +218,15 @@ class TestConfigCommand:
         assert "No API keys configured" in result.output
 
     def test_config_list_keys_with_data(
-        self, cli_runner: CliRunner, temp_config_dir: Path
+        self, cli_runner: CliRunner, temp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test listing keys when some are configured."""
         # Set up a key using KeyManager with temp directory
         key_manager = KeyManager(config_dir=temp_config_dir)
         key_manager.store_key("openai", "sk-test-key-12345")
+
+        # Set environment variable so CLI uses the same config directory
+        monkeypatch.setenv("SPECIFY_CONFIG_DIR", str(temp_config_dir))
 
         result = cli_runner.invoke(cli, ["config", "list-keys"])
 
