@@ -798,15 +798,18 @@ class KeyManager:
             raise
 
     def _ensure_config_dir(self) -> None:
-        """Ensure the config directory exists.
+        """Ensure the config directory exists with restrictive permissions.
 
-        Creates the directory if it doesn't exist.
+        Creates the directory if it doesn't exist and sets permissions to 0700
+        (owner read, write, execute only) to prevent access by other users.
 
         Raises:
             PermissionError: If unable to create the directory.
         """
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
+            # Set restrictive permissions: owner read/write/execute only (0700)
+            self.config_dir.chmod(stat.S_IRWXU)
         except PermissionError as e:
             raise KeyValidationError(
                 f"Permission denied when creating config directory {self.config_dir}: {e}"
