@@ -4,9 +4,9 @@ API Key Manager for Specify.AI.
 This module provides the KeyManager class for storing, retrieving, listing,
 and deleting API keys for LLM providers (Ollama, OpenAI, Anthropic).
 
-Keys are stored in a JSON file at ~/.specify/keys.json (or a custom directory
-if specified). This is Sprint 2 implementation - keys are stored in plain text
-without encryption. Encryption will be added in a future sprint.
+Keys are stored in an encrypted JSON file at ~/.specify/keys.json (or a custom
+directory if specified). Encryption uses Fernet (AES-128-CBC with HMAC) with
+a machine-specific key derived from the system's unique identifier.
 
 Environment variable support is provided as a fallback for API keys.
 If a key is not found in the local store, the manager will check for
@@ -25,11 +25,20 @@ Example usage:
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import platform
+import socket
 import stat
+import subprocess
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
+
+from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 # Allowed LLM providers
 VALID_PROVIDERS: Final[set[str]] = {"ollama", "openai", "anthropic"}
@@ -44,6 +53,364 @@ ENV_VAR_MAPPING: Final[dict[str, str]] = {
 # Default config directory name in user's home directory
 CONFIG_DIR_NAME: Final[str] = ".specify"
 KEYS_FILE_NAME: Final[str] = "keys.json"
+
+
+class EncryptionError(Exception):
+    """Raised when encryption operations fail.
+
+    This exception is raised when:
+    - Key derivation fails
+    - Fernet encryption fails
+    - File operations for salt storage fail
+    """
+
+    pass
+
+
+class DecryptionError(Exception):
+    """Raised when decryption fails due to corrupted data or missing salt.
+
+    This exception is raised when:
+    - The salt file is missing or corrupted
+    - The ciphertext is corrupted
+    - The machine ID has changed (keys from a different machine)
+    - Key derivation or decryption fails for any reason
+    """
+
+    pass
+
+
+class MachineIdError(Exception):
+    """Raised when unable to get machine-specific identifier.
+
+    This exception is raised when:
+    - Cannot read machine-id on Linux
+    - Cannot get IOPlatformUUID on macOS
+    - Cannot read MachineGuid from Windows registry
+    - Fallback (hostname + username) also fails
+    """
+
+    pass
+
+
+class CryptoManager:
+    """Manages encryption and decryption of sensitive data using Fernet.
+
+    This class provides symmetric encryption using Fernet (AES-128-CBC with HMAC)
+    for secure storage of API keys. The encryption key is derived from:
+    1. A machine-specific identifier (machine-id, IOPlatformUUID, or MachineGuid)
+    2. A randomly generated salt stored in ~/.specify/.salt
+
+    Key derivation uses PBKDF2HMAC with SHA-256 and 1,200,000 iterations
+    (OWASP recommended minimum).
+
+    Attributes:
+        config_dir: Path to the configuration directory.
+    """
+
+    SALT_FILE_NAME: str = ".salt"
+    PBKDF2_ITERATIONS: int = 1_200_000  # OWASP recommended minimum
+
+    def __init__(self, config_dir: Path) -> None:
+        """Initialize CryptoManager with the config directory.
+
+        Args:
+            config_dir: Path to the configuration directory (e.g., ~/.specify).
+        """
+        self.config_dir = config_dir
+        self._fernet: Fernet | None = None
+
+    def encrypt(self, plaintext: str) -> str:
+        """Encrypt a plaintext string and return base64-encoded ciphertext.
+
+        Args:
+            plaintext: The string to encrypt.
+
+        Returns:
+            Base64-encoded ciphertext string.
+
+        Raises:
+            EncryptionError: If encryption fails.
+        """
+        try:
+            fernet = self._get_fernet()
+            ciphertext = fernet.encrypt(plaintext.encode("utf-8"))
+            return base64.urlsafe_b64encode(ciphertext).decode("utf-8")
+        except Exception as e:
+            raise EncryptionError(
+                f"Failed to encrypt data: {e}"
+            ) from e
+
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt a ciphertext string and return plaintext.
+
+        Args:
+            ciphertext: Base64-encoded ciphertext string.
+
+        Returns:
+            Decrypted plaintext string.
+
+        Raises:
+            DecryptionError: If decryption fails (corrupted data, wrong key, etc.).
+        """
+        try:
+            fernet = self._get_fernet()
+            # Decode from base64
+            decoded = base64.urlsafe_b64decode(ciphertext.encode("utf-8"))
+            plaintext = fernet.decrypt(decoded)
+            return plaintext.decode("utf-8")
+        except DecryptionError:
+            raise
+        except Exception as e:
+            raise DecryptionError(
+                f"Failed to decrypt data: {e}. "
+                "This can happen if:\n"
+                "1. The keys were encrypted on a different machine\n"
+                "2. The .salt file was corrupted or deleted\n"
+                "3. The keys.json file is corrupted\n\n"
+                "You may need to re-store your API keys."
+            ) from e
+
+    def _get_fernet(self) -> Fernet:
+        """Get or create the Fernet instance with derived key.
+
+        Returns:
+            Fernet instance for encryption/decryption.
+
+        Raises:
+            EncryptionError: If key derivation fails.
+        """
+        if self._fernet is None:
+            key = self._derive_key()
+            self._fernet = Fernet(key)
+        return self._fernet
+
+    def _get_machine_id(self) -> bytes:
+        """Get a machine-specific identifier for key derivation.
+
+        Cross-platform implementation:
+        - Linux: /etc/machine-id or /var/lib/dbus/machine-id
+        - macOS: IOPlatformUUID via ioreg command
+        - Windows: MachineGuid from registry
+        - Fallback: hostname + username
+
+        Returns:
+            Machine-specific identifier as bytes.
+
+        Raises:
+            MachineIdError: If no machine identifier can be determined.
+        """
+        system = platform.system()
+
+        if system == "Linux":
+            return self._get_linux_machine_id()
+        elif system == "Darwin":
+            return self._get_macos_machine_id()
+        elif system == "Windows":
+            return self._get_windows_machine_id()
+        else:
+            return self._get_fallback_machine_id()
+
+    def _get_linux_machine_id(self) -> bytes:
+        """Get machine-id from Linux systems.
+
+        Tries /etc/machine-id first, then /var/lib/dbus/machine-id.
+
+        Returns:
+            Machine ID as bytes.
+
+        Raises:
+            MachineIdError: If machine-id cannot be read.
+        """
+        # Try /etc/machine-id first (primary location)
+        machine_id_paths = ["/etc/machine-id", "/var/lib/dbus/machine-id"]
+
+        for path in machine_id_paths:
+            try:
+                machine_id_file = Path(path)
+                if machine_id_file.exists():
+                    machine_id = machine_id_file.read_text(encoding="utf-8").strip()
+                    if machine_id:
+                        return machine_id.encode("utf-8")
+            except OSError:
+                continue
+
+        raise MachineIdError(
+            "Could not read machine-id from any of: " + ", ".join(machine_id_paths)
+        )
+
+    def _get_macos_machine_id(self) -> bytes:
+        """Get IOPlatformUUID from macOS using ioreg.
+
+        Returns:
+            IOPlatformUUID as bytes.
+
+        Raises:
+            MachineIdError: If ioreg command fails.
+        """
+        try:
+            result = subprocess.run(
+                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+
+            for line in result.stdout.split("\n"):
+                if "IOPlatformUUID" in line:
+                    # Extract UUID from the line
+                    uuid = line.split("=")[-1].strip('" \n')
+                    if uuid:
+                        return uuid.encode("utf-8")
+
+            raise MachineIdError("Could not find IOPlatformUUID in ioreg output")
+        except subprocess.TimeoutExpired as e:
+            raise MachineIdError(f"ioreg command timed out: {e}") from e
+        except subprocess.CalledProcessError as e:
+            raise MachineIdError(f"ioreg command failed: {e}") from e
+        except FileNotFoundError:
+            raise MachineIdError("ioreg command not found (not running macOS?)") from None
+
+    def _get_windows_machine_id(self) -> bytes:
+        """Get MachineGuid from Windows registry.
+
+        Returns:
+            MachineGuid as bytes.
+
+        Raises:
+            MachineIdError: If registry key cannot be read.
+        """
+        try:
+            import winreg
+
+            key_path = r"SOFTWARE\Microsoft\Cryptography"
+            value_name = "MachineGuid"
+
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                key_path,
+                0,
+                winreg.KEY_READ,
+            ) as key:
+                machine_guid: str = winreg.QueryValueEx(key, value_name)[0]
+                if machine_guid:
+                    return machine_guid.encode("utf-8")
+
+            raise MachineIdError("MachineGuid registry value is empty")
+        except FileNotFoundError:
+            raise MachineIdError(
+                "MachineGuid not found in registry at HKLM\\SOFTWARE\\Microsoft\\Cryptography"
+            ) from None
+        except OSError as e:
+            raise MachineIdError(f"Failed to read registry: {e}") from e
+        except ImportError:
+            # Fallback if winreg is not available
+            return self._get_fallback_machine_id()
+
+    def _get_fallback_machine_id(self) -> bytes:
+        """Get fallback machine identifier from hostname + username.
+
+        This is less secure but works across all platforms.
+
+        Returns:
+            Combined hostname + username as bytes.
+
+        Raises:
+            MachineIdError: If even fallback fails.
+        """
+        try:
+            hostname = socket.gethostname()
+            username = os.environ.get("USERNAME") or os.environ.get("USER") or "unknown"
+            fallback_id = f"{hostname}-{username}"
+            return fallback_id.encode("utf-8")
+        except Exception as e:
+            raise MachineIdError(
+                f"Could not determine fallback machine ID: {e}"
+            ) from e
+
+    def _derive_key(self) -> bytes:
+        """Derive a Fernet key from machine ID and salt using PBKDF2HMAC.
+
+        Uses PBKDF2HMAC with SHA-256 and 1,200,000 iterations
+        to derive a 32-byte key, then encodes it for Fernet usage.
+
+        Returns:
+            32-byte key suitable for Fernet encryption.
+
+        Raises:
+            EncryptionError: If key derivation fails.
+        """
+        try:
+            salt = self._load_or_create_salt()
+            machine_id = self._get_machine_id()
+
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=self.PBKDF2_ITERATIONS,
+                backend=default_backend(),
+            )
+
+            key = kdf.derive(machine_id)
+            # Encode to URL-safe base64 for Fernet
+            return base64.urlsafe_b64encode(key)
+        except MachineIdError:
+            raise
+        except Exception as e:
+            raise EncryptionError(f"Failed to derive encryption key: {e}") from e
+
+    def _load_or_create_salt(self) -> bytes:
+        """Load existing salt or create and store a new one.
+
+        The salt file is stored at ~/.specify/.salt with permissions 0600.
+        If the file doesn't exist, a new 16-byte random salt is generated
+        and saved.
+
+        Returns:
+            16-byte salt.
+
+        Raises:
+            EncryptionError: If salt file operations fail.
+        """
+        import secrets
+
+        salt_file = self.config_dir / self.SALT_FILE_NAME
+
+        # Ensure config directory exists
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            raise EncryptionError(
+                f"Permission denied creating config directory {self.config_dir}: {e}"
+            ) from e
+
+        # Try to load existing salt
+        if salt_file.exists():
+            try:
+                salt_data = salt_file.read_bytes()
+                # Salt should be exactly 16 bytes
+                if len(salt_data) == 16:
+                    return salt_data
+                else:
+                    # Invalid salt length - will recreate
+                    pass
+            except OSError:
+                # Can't read - will recreate
+                pass
+
+        # Create new salt
+        try:
+            new_salt = secrets.token_bytes(16)
+            salt_file.write_bytes(new_salt)
+            # Set restrictive permissions: owner read/write only (0600)
+            salt_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            return new_salt
+        except OSError as e:
+            raise EncryptionError(
+                f"Failed to create salt file at {salt_file}: {e}"
+            ) from e
 
 
 class KeyValidationError(Exception):
@@ -98,14 +465,22 @@ class KeyManager:
 
         Args:
             config_dir: Optional custom directory for storing keys.
-                       If None, uses ~/.specify
+                       If None, uses SPECIFY_CONFIG_DIR env var or ~/.specify
         """
         if config_dir is None:
-            self.config_dir: Path = Path.home() / CONFIG_DIR_NAME
+            # Check for environment variable first
+            config_dir_env = os.environ.get("SPECIFY_CONFIG_DIR")
+            if config_dir_env:
+                self.config_dir: Path = Path(config_dir_env)
+            else:
+                self.config_dir = Path.home() / CONFIG_DIR_NAME
         else:
             self.config_dir = config_dir
 
         self.keys_file: Path = self.config_dir / KEYS_FILE_NAME
+
+        # Initialize CryptoManager for encryption/decryption
+        self._crypto_manager = CryptoManager(self.config_dir)
 
     def store_key(self, provider: str, key: str) -> None:
         """Store an API key for a provider.
@@ -172,7 +547,7 @@ class KeyManager:
             sk-test123
         """
         provider_lower = provider.lower()
-        
+
         # 1. Check local store (JSON file)
         keys = self._load_keys()
         if provider_lower in keys:
@@ -270,7 +645,7 @@ class KeyManager:
             False
         """
         provider_lower = provider.lower()
-        
+
         # Check local store
         keys = self._load_keys()
         if provider_lower in keys:
@@ -310,12 +685,17 @@ class KeyManager:
     def _load_keys(self) -> dict[str, str]:
         """Load keys from the JSON file.
 
+        Handles both encrypted and plain-text formats for backward compatibility.
+        If keys are stored in plain-text format, they are migrated to encrypted
+        format on next save.
+
         Returns:
-            Dictionary of provider -> key mappings.
+            Dictionary of provider -> key mappings (always decrypted).
             Returns empty dict if file doesn't exist or is empty.
 
         Raises:
-            json.JSONDecodeError: If the keys file contains invalid JSON.
+            KeyValidationError: If the keys file contains invalid JSON.
+            DecryptionError: If decryption fails (corrupted data, wrong key, etc.).
         """
         if not self.keys_file.exists():
             return {}
@@ -328,31 +708,94 @@ class KeyManager:
                 # Invalid format - return empty dict
                 return {}
 
-            return data
+            # Check if keys are encrypted
+            is_encrypted = data.get("_encrypted", False)
+
+            result: dict[str, str] = {}
+            needs_migration = False
+
+            for key, value in data.items():
+                # Skip metadata keys (starting with underscore)
+                if key.startswith("_"):
+                    continue
+
+                if is_encrypted:
+                    # Decrypt the encrypted value
+                    try:
+                        result[key] = self._crypto_manager.decrypt(value)
+                    except DecryptionError as e:
+                        # Re-raise with context about which provider failed
+                        raise DecryptionError(
+                            f"Cannot decrypt API key for '{key}': {e}\n\n"
+                            "This typically happens when:\n"
+                            "1. The keys were encrypted on a different machine\n"
+                            "2. The .salt file was corrupted or deleted\n"
+                            "3. The keys.json file is corrupted\n\n"
+                            "You may need to re-store your API keys."
+                        ) from e
+                else:
+                    # Plain text - needs migration to encrypted format
+                    result[key] = value
+                    needs_migration = True
+
+            # Migrate plain-text keys to encrypted format on next save
+            # This happens transparently when keys are saved again
+            if needs_migration and result:
+                # Schedule migration by re-saving with encryption
+                self._save_keys(result)
+
+            return result
         except json.JSONDecodeError as e:
             raise KeyValidationError(
                 f"Invalid keys file format: {e}. "
-                "Please fix or delete the file at " + str(self.keys_file)
+                "The keys.json file appears to be corrupted.\n\n"
+                "Recovery options:\n"
+                "1. If you have a backup, restore ~/.specify/keys.json\n"
+                "2. Otherwise, delete the corrupted file and re-store your keys:\n"
+                "   rm ~/.specify/keys.json\n"
+                "   specify store-key openai YOUR_API_KEY\n\n"
+                f"File location: {self.keys_file}"
             ) from e
+        except DecryptionError:
+            # Re-raise DecryptionError without wrapping
+            raise
 
     def _save_keys(self, keys: dict[str, str]) -> None:
-        """Save keys to the JSON file.
+        """Save keys to the JSON file in encrypted format.
 
         Args:
             keys: Dictionary of provider -> key mappings to save.
 
         Raises:
             PermissionError: If unable to write to the keys file.
+            EncryptionError: If encryption fails.
         """
         try:
+            # Encrypt each key value before storing
+            encrypted_keys: dict[str, Any] = {
+                "_version": 2,
+                "_encrypted": True,
+            }
+
+            for provider, key in keys.items():
+                try:
+                    encrypted_keys[provider] = self._crypto_manager.encrypt(key)
+                except EncryptionError as e:
+                    raise EncryptionError(
+                        f"Failed to encrypt key for '{provider}': {e}"
+                    ) from e
+
             with self.keys_file.open("w", encoding="utf-8") as f:
-                json.dump(keys, f, indent=2, sort_keys=True)
+                json.dump(encrypted_keys, f, indent=2, sort_keys=True)
             # Set restrictive permissions: owner read/write only (0600)
-            os.chmod(self.keys_file, stat.S_IRUSR | stat.S_IWUSR)
+            self.keys_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
         except PermissionError as e:
             raise KeyValidationError(
                 f"Permission denied when writing to {self.keys_file}: {e}"
             ) from e
+        except EncryptionError:
+            # Re-raise EncryptionError without wrapping
+            raise
 
     def _ensure_config_dir(self) -> None:
         """Ensure the config directory exists.
