@@ -27,7 +27,7 @@ from collections.abc import Sequence
 import click
 
 from specify import __version__
-from specify.core import KeyManager, KeyValidationError
+from specify.core import KeyManager, KeyNotFoundError, KeyValidationError
 
 
 def main(args: Sequence[str] | None = None) -> int:
@@ -270,6 +270,7 @@ def list_keys() -> None:
 
     Shows which LLM providers have API keys configured.
     Keys are displayed in masked format (e.g., sk-...abc).
+    Keys are sourced from both the local store and environment variables.
 
     \b
     Example:
@@ -302,6 +303,7 @@ def delete_key(provider: str) -> None:
     Delete a stored API key.
 
     Removes the API key for the specified provider from local storage.
+    Note: This does not affect environment variables.
 
     \b
     Example:
@@ -309,10 +311,11 @@ def delete_key(provider: str) -> None:
     """
     key_manager = KeyManager()
 
-    if not key_manager.delete_key(provider):
-        raise click.ClickException(f"No key found for provider: {provider}")
-
-    click.echo(f"[OK] API key deleted for {provider}")
+    try:
+        key_manager.delete_key(provider)
+        click.echo(f"[OK] API key deleted for {provider}")
+    except KeyNotFoundError as e:
+        raise click.ClickException(str(e)) from e
 
 
 # ─────────────────────────────────────────────────────────────────────────────

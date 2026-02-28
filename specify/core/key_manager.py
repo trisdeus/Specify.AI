@@ -8,6 +8,10 @@ Keys are stored in a JSON file at ~/.specify/keys.json (or a custom directory
 if specified). This is Sprint 2 implementation - keys are stored in plain text
 without encryption. Encryption will be added in a future sprint.
 
+Environment variable support is provided as a fallback for API keys.
+If a key is not found in the local store, the manager will check for
+environment variables (e.g., OPENAI_API_KEY).
+
 Example usage:
     >>> from specify.core import KeyManager
     >>> km = KeyManager()
@@ -30,6 +34,13 @@ from typing import Final
 # Allowed LLM providers
 VALID_PROVIDERS: Final[set[str]] = {"ollama", "openai", "anthropic"}
 
+# Mapping of providers to their environment variable names
+ENV_VAR_MAPPING: Final[dict[str, str]] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "ollama": "OLLAMA_HOST",
+}
+
 # Default config directory name in user's home directory
 CONFIG_DIR_NAME: Final[str] = ".specify"
 KEYS_FILE_NAME: Final[str] = "keys.json"
@@ -50,7 +61,7 @@ class KeyNotFoundError(Exception):
     """Raised when a key is not found for a provider.
 
     This exception is raised when attempting to retrieve or delete
-    a key that doesn't exist.
+    a key that doesn't exist in the local store or environment.
     """
 
     def __init__(self, provider: str) -> None:
@@ -68,6 +79,7 @@ class KeyManager:
 
     This class provides methods for managing API keys for LLM providers.
     Keys are stored in a JSON file at ~/.specify/keys.json by default.
+    Environment variables are checked as a fallback source.
 
     Attributes:
         config_dir: Path to the configuration directory.
@@ -139,6 +151,9 @@ class KeyManager:
     def get_key(self, provider: str) -> str:
         """Retrieve an API key for a provider.
 
+        Checks the local JSON file first. If the key is not found there,
+        it falls back to checking environment variables (e.g., OPENAI_API_KEY).
+
         Args:
             provider: The provider name to look up.
 
@@ -146,7 +161,8 @@ class KeyManager:
             The API key.
 
         Raises:
-            KeyNotFoundError: If no key is found for the provider.
+            KeyNotFoundError: If no key is found for the provider in the
+                              local store or environment variables.
 
         Example:
             >>> km = KeyManager()
@@ -155,11 +171,22 @@ class KeyManager:
             >>> print(key)
             sk-test123
         """
-        keys = self._load_keys()
         provider_lower = provider.lower()
-        if provider_lower not in keys:
-            raise KeyNotFoundError(provider_lower)
-        return keys[provider_lower]
+        
+        # 1. Check local store (JSON file)
+        keys = self._load_keys()
+        if provider_lower in keys:
+            return keys[provider_lower]
+
+        # 2. Check environment variables
+        env_var_name = ENV_VAR_MAPPING.get(provider_lower)
+        if env_var_name:
+            env_value = os.environ.get(env_var_name)
+            if env_value:
+                return env_value
+
+        # 3. Not found anywhere
+        raise KeyNotFoundError(provider_lower)
 
     def list_keys(self) -> dict[str, str]:
         """List all stored API keys with masked values.
@@ -167,6 +194,9 @@ class KeyManager:
         Returns a dictionary mapping provider names to masked keys.
         Keys are masked for security - only first 3 and last 3 characters
         are shown (e.g., "sk-...abc").
+
+        This method aggregates keys from both the local JSON file and
+        environment variables. Local keys take precedence.
 
         Returns:
             Dictionary mapping provider names to masked API keys.
@@ -178,6 +208,14 @@ class KeyManager:
             {'openai': 'sk-...123'}
         """
         keys = self._load_keys()
+
+        # Add keys from environment variables if not already in file
+        for provider, env_var in ENV_VAR_MAPPING.items():
+            if provider not in keys:
+                env_value = os.environ.get(env_var)
+                if env_value:
+                    keys[provider] = env_value
+
         # Mask all keys for display
         masked_keys = {provider: self._mask_key(key) for provider, key in keys.items()}
         return masked_keys
@@ -185,11 +223,15 @@ class KeyManager:
     def delete_key(self, provider: str) -> None:
         """Delete a stored API key.
 
+        Note: This only deletes keys from the local JSON store.
+        It does not modify environment variables.
+
         Args:
             provider: The provider name to delete the key for.
 
         Raises:
-            KeyNotFoundError: If no key is found for the provider.
+            KeyNotFoundError: If no key is found for the provider in the
+                              local store.
 
         Example:
             >>> km = KeyManager()
@@ -211,6 +253,8 @@ class KeyManager:
     def key_exists(self, provider: str) -> bool:
         """Check if a key exists for a provider.
 
+        Checks both the local JSON store and environment variables.
+
         Args:
             provider: The provider name to check.
 
@@ -225,8 +269,19 @@ class KeyManager:
             >>> km.key_exists("anthropic")
             False
         """
+        provider_lower = provider.lower()
+        
+        # Check local store
         keys = self._load_keys()
-        return provider.lower() in keys
+        if provider_lower in keys:
+            return True
+
+        # Check environment variables
+        env_var_name = ENV_VAR_MAPPING.get(provider_lower)
+        if env_var_name:
+            return os.environ.get(env_var_name) is not None
+
+        return False
 
     def _mask_key(self, key: str) -> str:
         """Mask a key for secure display.

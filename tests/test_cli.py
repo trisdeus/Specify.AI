@@ -231,6 +231,20 @@ class TestConfigCommand:
         assert "openai" in result.output.lower()
         assert "sk-" in result.output  # Masked key prefix should be visible
 
+    def test_config_list_keys_with_env_var(
+        self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test listing keys includes keys from environment variables."""
+        # Set env var
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env-test-key-12345")
+
+        # Run CLI
+        result = cli_runner.invoke(cli, ["config", "list-keys"])
+
+        assert result.exit_code == 0
+        assert "openai" in result.output.lower()
+        assert "sk-" in result.output
+
     def test_config_delete_key_requires_provider(self, cli_runner: CliRunner) -> None:
         """Test that delete-key requires provider."""
         result = cli_runner.invoke(cli, ["config", "delete-key"])
