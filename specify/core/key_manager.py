@@ -17,7 +17,6 @@ Example usage:
     >>> km.list_keys()
     {'openai': 'sk-...123'}
     >>> km.delete_key("openai")
-    True
 """
 
 from __future__ import annotations
@@ -137,23 +136,30 @@ class KeyManager:
         # Save keys to file
         self._save_keys(keys)
 
-    def get_key(self, provider: str) -> str | None:
+    def get_key(self, provider: str) -> str:
         """Retrieve an API key for a provider.
 
         Args:
             provider: The provider name to look up.
 
         Returns:
-            The API key if found, None otherwise.
+            The API key.
+
+        Raises:
+            KeyNotFoundError: If no key is found for the provider.
 
         Example:
             >>> km = KeyManager()
+            >>> km.store_key("openai", "sk-test123")
             >>> key = km.get_key("openai")
             >>> print(key)
             sk-test123
         """
         keys = self._load_keys()
-        return keys.get(provider.lower())
+        provider_lower = provider.lower()
+        if provider_lower not in keys:
+            raise KeyNotFoundError(provider_lower)
+        return keys[provider_lower]
 
     def list_keys(self) -> dict[str, str]:
         """List all stored API keys with masked values.
@@ -176,36 +182,31 @@ class KeyManager:
         masked_keys = {provider: self._mask_key(key) for provider, key in keys.items()}
         return masked_keys
 
-    def delete_key(self, provider: str) -> bool:
+    def delete_key(self, provider: str) -> None:
         """Delete a stored API key.
 
         Args:
             provider: The provider name to delete the key for.
 
-        Returns:
-            True if the key was deleted, False if it didn't exist.
+        Raises:
+            KeyNotFoundError: If no key is found for the provider.
 
         Example:
             >>> km = KeyManager()
             >>> km.store_key("openai", "sk-test")
             >>> km.delete_key("openai")
-            True
-            >>> km.delete_key("openai")
-            False
         """
         keys = self._load_keys()
         provider_lower = provider.lower()
 
         if provider_lower not in keys:
-            return False
+            raise KeyNotFoundError(provider_lower)
 
         # Remove the key
         del keys[provider_lower]
 
         # Save keys to file
         self._save_keys(keys)
-
-        return True
 
     def key_exists(self, provider: str) -> bool:
         """Check if a key exists for a provider.
