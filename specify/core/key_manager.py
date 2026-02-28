@@ -477,12 +477,20 @@ class KeyManager:
         Args:
             config_dir: Optional custom directory for storing keys.
                        If None, uses SPECIFY_CONFIG_DIR env var or ~/.specify
+
+        Raises:
+            KeyValidationError: If SPECIFY_CONFIG_DIR is not an absolute path.
         """
         if config_dir is None:
             # Check for environment variable first
             config_dir_env = os.environ.get("SPECIFY_CONFIG_DIR")
             if config_dir_env:
-                self.config_dir: Path = Path(config_dir_env)
+                config_path = Path(config_dir_env).resolve()
+                if not config_path.is_absolute():
+                    raise KeyValidationError(
+                        f"SPECIFY_CONFIG_DIR must be an absolute path, got: {config_dir_env}"
+                    )
+                self.config_dir: Path = config_path
             else:
                 self.config_dir = Path.home() / CONFIG_DIR_NAME
         else:
