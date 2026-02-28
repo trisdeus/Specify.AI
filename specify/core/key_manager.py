@@ -32,6 +32,7 @@ import platform
 import socket
 import stat
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Any, Final
 
@@ -311,7 +312,9 @@ class CryptoManager:
     def _get_fallback_machine_id(self) -> bytes:
         """Get fallback machine identifier from hostname + username.
 
-        This is less secure but works across all platforms.
+        This is less secure but works across all platforms. A warning is
+        emitted when this fallback is used, as the combination of hostname
+        and username is more easily guessable than platform-specific IDs.
 
         Returns:
             Combined hostname + username as bytes.
@@ -319,6 +322,14 @@ class CryptoManager:
         Raises:
             MachineIdError: If even fallback fails.
         """
+        warnings.warn(
+            "Using insecure fallback machine ID (hostname + username). "
+            "Platform-specific machine ID could not be determined. "
+            "This may result in weaker encryption. "
+            "Consider ensuring platform-specific identifiers are accessible.",
+            UserWarning,
+            stacklevel=3,
+        )
         try:
             hostname = socket.gethostname()
             username = os.environ.get("USERNAME") or os.environ.get("USER") or "unknown"
