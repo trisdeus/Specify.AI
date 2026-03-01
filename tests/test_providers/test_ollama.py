@@ -36,7 +36,7 @@ from specify.providers.ollama import OllamaProvider
 def mock_ollama_client(mocker):
     """Mock the Ollama AsyncClient."""
     mock_client = AsyncMock()
-    mocker.patch("specify.providers.ollama.AsyncClient", return_value=mock_client)
+    mocker.patch("specify.providers.ollama.AsyncClient", return_value=mock_client, autospec=True)
     return mock_client
 
 
