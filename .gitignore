@@ -133,9 +133,7 @@ Desktop.ini
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Aider - AI pair programming tool
-.aider.chat.history.md
-.aider.input.history
-.aider.tags.cache.v*/
+.aider*
 
 # Claude Code - Anthropic CLI assistant
 .claude/
