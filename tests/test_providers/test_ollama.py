@@ -300,6 +300,17 @@ class TestOllamaProviderFactory:
         provider = factory.create("OLLAMA", ollama_config)
         assert isinstance(provider, OllamaProvider)
 
+    def test_submodule_import_no_side_effects(self):
+        """Test that importing ollama submodule directly does not register provider.
+        
+        This verifies that importing specify.providers.ollama does NOT trigger
+        registration with the default factory, allowing tests to create isolated
+        ProviderFactory instances.
+        """
+        from specify.providers.base import ProviderFactory
+        fresh_factory = ProviderFactory()
+        assert not fresh_factory.is_registered("ollama")
+
 
 # =============================================================================
 # F. Error Handling Tests

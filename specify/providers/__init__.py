@@ -30,8 +30,15 @@ from specify.providers.base import (
     get_default_factory,
 )
 
+from specify.providers.ollama import OllamaProvider
+
+# Explicitly register providers with the default factory
+# This ensures importing the submodule is side-effect-free
+get_default_factory().register("ollama", OllamaProvider)
+
 __all__ = [
     "BaseProvider",
+    "OllamaProvider",
     "ProviderAuthError",
     "ProviderConfig",
     "ProviderConfigError",
