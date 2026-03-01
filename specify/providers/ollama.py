@@ -208,6 +208,3 @@ class OllamaProvider(BaseProvider):
         raise ProviderResponseError(
             f"Ollama API error: {error}"
         ) from error
-
-
-# Remove module-level registration - now handled in __init__.py
