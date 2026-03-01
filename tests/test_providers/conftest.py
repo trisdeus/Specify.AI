@@ -6,11 +6,14 @@ This module provides shared fixtures for testing the provider abstraction layer.
 
 from __future__ import annotations
 
-from typing import AsyncIterator
+from typing import TYPE_CHECKING
 
 import pytest
 
 from specify.providers import BaseProvider, ProviderConfig
+
+if TYPE_CHECKING:
+    from typing import AsyncIterator
 
 
 class MockProvider(BaseProvider):
