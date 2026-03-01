@@ -387,6 +387,23 @@ class ProviderFactory:
 
         self._registry[name_lower] = provider_class
 
+    def unregister(self, name: str) -> None:
+        """Unregister a provider from the factory.
+
+        Args:
+            name: Provider name to unregister (e.g., "openai")
+
+        Raises:
+            ProviderConfigError: If provider is not registered
+
+        Example:
+            >>> factory.unregister("openai")
+        """
+        name_lower = name.lower()
+        if name_lower not in self._registry:
+            raise ProviderConfigError(f"Provider '{name}' is not registered")
+        del self._registry[name_lower]
+
     def create(self, name: str, config: ProviderConfig) -> BaseProvider:
         """Create a provider instance.
 
