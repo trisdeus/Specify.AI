@@ -15,6 +15,7 @@ Example usage:
 from __future__ import annotations
 
 import os
+import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -447,6 +448,7 @@ class ProviderFactory:
 # =============================================================================
 
 _default_factory: ProviderFactory | None = None
+_factory_lock = threading.Lock()
 
 
 def get_default_factory() -> ProviderFactory:
@@ -464,5 +466,7 @@ def get_default_factory() -> ProviderFactory:
     """
     global _default_factory
     if _default_factory is None:
-        _default_factory = ProviderFactory()
+        with _factory_lock:
+            if _default_factory is None:
+                _default_factory = ProviderFactory()
     return _default_factory
