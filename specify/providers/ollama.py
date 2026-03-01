@@ -129,6 +129,7 @@ class OllamaProvider(BaseProvider):
                 yield chunk["message"]["content"]
         except Exception as e:
             self._handle_error(e)
+            raise
 
     async def validate_connection(self) -> bool:
         """Validate that the Ollama connection is working.
