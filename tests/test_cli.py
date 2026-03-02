@@ -659,7 +659,7 @@ class TestOnboardingWizard:
 
         # We can't easily test the interactive prompt directly
         # Instead, test by mocking click.prompt
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 1
             result = prompt_provider_selection()
             assert result == "ollama"
@@ -668,7 +668,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_provider_selection with valid input 2 (OpenAI)."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 2
             result = prompt_provider_selection()
             assert result == "openai"
@@ -677,7 +677,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_provider_selection with valid input 3 (Anthropic)."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 3
             result = prompt_provider_selection()
             assert result == "anthropic"
@@ -687,7 +687,7 @@ class TestOnboardingWizard:
     ) -> None:
         """Test prompt_provider_selection with invalid input then valid."""
         # Mock prompt to return invalid then valid
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.side_effect = [99, 4, 1]  # Invalid, invalid, valid
             result = prompt_provider_selection()
             assert result == "ollama"
@@ -698,7 +698,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_key_input for Ollama (URL input)."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = "http://localhost:11434"
             result = prompt_key_input("ollama")
             assert result == "http://localhost:11434"
@@ -707,7 +707,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_key_input for Ollama with user-provided URL."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = "http://custom:9999"
             result = prompt_key_input("ollama")
             assert result == "http://custom:9999"
@@ -716,7 +716,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_key_input for OpenAI (hidden API key input)."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = "sk-test-key-12345"
             result = prompt_key_input("openai")
             assert result == "sk-test-key-12345"
@@ -725,7 +725,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_key_input for Anthropic (hidden API key input)."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = "sk-ant-test-key-12345"
             result = prompt_key_input("anthropic")
             assert result == "sk-ant-test-key-12345"
@@ -734,7 +734,7 @@ class TestOnboardingWizard:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_key_input with empty input then valid."""
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.side_effect = ["", "sk-valid-key"]
             result = prompt_key_input("openai")
             assert result == "sk-valid-key"
@@ -746,7 +746,7 @@ class TestOnboardingWizard:
         """Test prompt_model_selection with model list fetched."""
         mock_fetch.return_value = ["llama2", "llama3", "mistral"]
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 2  # Select llama3
             result = prompt_model_selection("ollama", "http://localhost:11434")
             assert result == "llama3"
@@ -758,7 +758,7 @@ class TestOnboardingWizard:
         """Test prompt_model_selection with manual model entry."""
         mock_fetch.side_effect = Exception("Connection failed")
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = "codellama"
             result = prompt_model_selection("ollama", "http://localhost:11434")
             assert result == "codellama"
@@ -770,7 +770,7 @@ class TestOnboardingWizard:
         """Test prompt_model_selection with OpenAI models."""
         mock_fetch.return_value = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 1  # Select gpt-4o
             result = prompt_model_selection("openai", "sk-test-key")
             assert result == "gpt-4o"
@@ -782,7 +782,7 @@ class TestOnboardingWizard:
         """Test prompt_model_selection with Anthropic models."""
         mock_fetch.return_value = ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 1  # Select claude-3-opus
             result = prompt_model_selection("anthropic", "sk-ant-test-key")
             assert result == "claude-3-opus"
@@ -794,7 +794,7 @@ class TestOnboardingWizard:
         """Test prompt_model_selection with custom model entry (option 0)."""
         mock_fetch.return_value = ["llama2", "llama3", "mistral"]
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             # First return 0 to select custom, then return custom model name
             mock_prompt.side_effect = [0, "custom-model"]
             result = prompt_model_selection("ollama", "http://localhost:11434")
@@ -856,7 +856,7 @@ class TestMainMenu:
         # Option 1 leads to handle_generate_flow which is complex
         # We just test that menu is displayed, then exit (5)
         with mock.patch("specify.cli.handle_generate_flow"):
-            with mock.patch("click.prompt") as mock_prompt:
+            with mock.patch("specify.cli.click.prompt") as mock_prompt:
                 mock_prompt.side_effect = [1, 5]  # Option 1, then exit
                 show_main_menu()
                 # If we get here without error, test passes
@@ -868,7 +868,7 @@ class TestMainMenu:
         monkeypatch.setenv("SPECIFY_CONFIG_DIR", str(temp_config_dir))
 
         with mock.patch("specify.cli.handle_add_provider"):
-            with mock.patch("click.prompt") as mock_prompt:
+            with mock.patch("specify.cli.click.prompt") as mock_prompt:
                 mock_prompt.side_effect = [2, 5]  # Option 2, then exit
                 show_main_menu()
 
@@ -882,7 +882,7 @@ class TestMainMenu:
         key_manager = KeyManager(config_dir=temp_config_dir)
         key_manager.store_key("openai", "sk-test-key")
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.side_effect = [3, 5]  # Option 3, then exit
             # This should print provider list
             show_main_menu()
@@ -898,7 +898,7 @@ class TestMainMenu:
         key_manager.store_key("openai", "sk-test-key")
 
         with mock.patch("specify.cli.handle_delete_provider"):
-            with mock.patch("click.prompt") as mock_prompt:
+            with mock.patch("specify.cli.click.prompt") as mock_prompt:
                 mock_prompt.side_effect = [4, 5]  # Option 4, then exit
                 show_main_menu()
 
@@ -908,7 +908,7 @@ class TestMainMenu:
         """Test show_main_menu option 5 (exit)."""
         monkeypatch.setenv("SPECIFY_CONFIG_DIR", str(temp_config_dir))
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.return_value = 5
             # Should exit cleanly with goodbye message
             show_main_menu()
@@ -920,7 +920,7 @@ class TestMainMenu:
         monkeypatch.setenv("SPECIFY_CONFIG_DIR", str(temp_config_dir))
 
         # First invalid, then valid exit
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.side_effect = [99, 5]  # Invalid, then exit
             show_main_menu()
             # Should have shown invalid message
@@ -931,7 +931,7 @@ class TestMainMenu:
         """Test show_main_menu handles Ctrl+C gracefully."""
         monkeypatch.setenv("SPECIFY_CONFIG_DIR", str(temp_config_dir))
 
-        with mock.patch("click.prompt") as mock_prompt:
+        with mock.patch("specify.cli.click.prompt") as mock_prompt:
             mock_prompt.side_effect = click.Abort()
             # Should handle gracefully
             show_main_menu()
@@ -949,7 +949,7 @@ class TestConsistencyCheckLoop:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_consistency_check with 'y' input."""
-        with mock.patch("click.confirm") as mock_confirm:
+        with mock.patch("specify.cli.click.confirm") as mock_confirm:
             mock_confirm.return_value = True
             result = prompt_consistency_check("./output")
             assert result is True
@@ -958,7 +958,7 @@ class TestConsistencyCheckLoop:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_consistency_check with 'n' input."""
-        with mock.patch("click.confirm") as mock_confirm:
+        with mock.patch("specify.cli.click.confirm") as mock_confirm:
             mock_confirm.return_value = False
             result = prompt_consistency_check("./output")
             assert result is False
@@ -997,7 +997,7 @@ class TestConsistencyCheckLoop:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_fix_inconsistencies with 'y' input."""
-        with mock.patch("click.confirm") as mock_confirm:
+        with mock.patch("specify.cli.click.confirm") as mock_confirm:
             mock_confirm.return_value = True
             result = prompt_fix_inconsistencies()
             assert result is True
@@ -1006,7 +1006,7 @@ class TestConsistencyCheckLoop:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test prompt_fix_inconsistencies with 'n' input."""
-        with mock.patch("click.confirm") as mock_confirm:
+        with mock.patch("specify.cli.click.confirm") as mock_confirm:
             mock_confirm.return_value = False
             result = prompt_fix_inconsistencies()
             assert result is False
