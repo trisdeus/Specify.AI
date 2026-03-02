@@ -115,13 +115,26 @@ def _should_skip_onboarding(ctx: click.Context) -> bool:
         return True
 
     # Check if args indicate explicit configuration (e.g., --provider, --key)
+    # Use a set for O(1) lookup of flags that indicate explicit configuration
+    skip_flags = {
+        "--provider", "-p",      # Provider selection
+        "--key", "-k",           # API key input
+        "--model", "-m",         # Model selection
+        "--help", "-h",          # Help flag
+        "--version",             # Version flag
+        "--verbose", "-v",       # Verbose flag
+    }
+
     if ctx.args:
-        # Check for common flags that indicate explicit configuration
         for arg in ctx.args:
-            if arg.startswith("--provider") or arg.startswith("-p"):
+            # Check for exact match or flag with value (e.g., --provider=openai)
+            if arg in skip_flags:
                 return True
-            if arg.startswith("--key") or arg.startswith("-k"):
-                return True
+            # Handle flags with = syntax (e.g., --provider=openai)
+            if "=" in arg:
+                flag_part = arg.split("=")[0]
+                if flag_part in skip_flags:
+                    return True
 
     return False
 
