@@ -104,7 +104,7 @@ USER PROMPT:
         """
         self._provider = provider
 
-    def extract(self, prompt: str, missing_types: list[str]) -> EntityContext:
+    async def extract(self, prompt: str, missing_types: list[str]) -> EntityContext:
         """Extract entities using LLM for specified missing types.
         
         This method sends the user prompt to the LLM with the extraction schema
@@ -147,8 +147,8 @@ USER PROMPT:
         )
 
         try:
-            # Call the LLM provider
-            response = self._provider.generate(
+            # Call the LLM provider (async)
+            response = await self._provider.generate(
                 prompt=extraction_prompt,
                 rules="You are a precise entity extraction system. Output ONLY valid JSON, no additional text."
             )

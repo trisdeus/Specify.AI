@@ -21,7 +21,7 @@ Example:
     >>> extractor = HybridContextExtractor(provider=provider)
     >>>
     >>> # Extract entities
-    >>> context = extractor.extract("Build an admin dashboard for managing users...")
+    >>> context = await extractor.extract("Build an admin dashboard for managing users...")
 """
 
 from __future__ import annotations
@@ -86,11 +86,11 @@ class HybridContextExtractor:
     Example:
         >>> # Basic usage with LLM provider
         >>> extractor = HybridContextExtractor(provider=ollama_provider)
-        >>> context = extractor.extract("Build a user authentication system...")
+        >>> context = await extractor.extract("Build a user authentication system...")
         >>>
         >>> # Deterministic-only (no LLM fallback)
         >>> extractor = HybridContextExtractor()
-        >>> context = extractor.extract("Build a login feature...")
+        >>> context = await extractor.extract("Build a login feature...")
     """
     
     # Confidence threshold below which entities trigger LLM fallback
@@ -127,7 +127,7 @@ class HybridContextExtractor:
         else:
             logger.info("HybridContextExtractor initialized in deterministic-only mode")
     
-    def extract(self, prompt: str) -> EntityContext:
+    async def extract(self, prompt: str) -> EntityContext:
         """Extract entities using hybrid approach.
         
         This method performs the two-phase extraction:
@@ -145,7 +145,7 @@ class HybridContextExtractor:
         
         Example:
             >>> extractor = HybridContextExtractor(provider=provider)
-            >>> context = extractor.extract("Build an admin dashboard...")
+            >>> context = await extractor.extract("Build an admin dashboard...")
             >>> for persona in context.user_personas:
             ...     print(f"Persona: {persona.name}")
         """
@@ -171,7 +171,7 @@ class HybridContextExtractor:
             )
             
             try:
-                llm_context = self._llm_extractor.extract(
+                llm_context = await self._llm_extractor.extract(
                     prompt=prompt,
                     missing_types=analysis.missing_types
                 )

@@ -11,6 +11,7 @@ This module contains unit tests for:
 - End-to-end extraction with sample prompts
 """
 
+import asyncio
 import json
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -32,13 +33,14 @@ from specify.providers.base import ProviderConfig
 
 # Create a mock provider for testing
 class MockProvider:
-    """Mock provider for testing."""
+    """Mock provider for testing with async generate method."""
 
     def __init__(self, config: ProviderConfig) -> None:
         self._config = config
         self._mock_response: str = ""
 
-    def generate(self, prompt: str, rules: str | None = None) -> str:
+    async def generate(self, prompt: str, rules: str | None = None) -> str:
+        """Async generate method matching BaseProvider interface."""
         return self._mock_response
 
 
@@ -112,27 +114,30 @@ class TestExtractionAnalysis:
 class TestDeterministicOnlyExtraction:
     """Tests for deterministic-only extraction."""
 
-    def test_extract_with_no_provider(self) -> None:
+    @pytest.mark.asyncio
+    async def test_extract_with_no_provider(self) -> None:
         """Test extraction without provider uses deterministic only."""
         extractor = HybridContextExtractor()
-        context = extractor.extract("Build an app with user John")
+        context = await extractor.extract("Build an app with user John")
 
         # Should return context from deterministic extraction
         assert context is not None
         assert isinstance(context, EntityContext)
 
-    def test_extract_with_entities_found(self) -> None:
+    @pytest.mark.asyncio
+    async def test_extract_with_entities_found(self) -> None:
         """Test extraction when entities are found."""
         extractor = HybridContextExtractor()
-        context = extractor.extract("User John needs authentication")
+        context = await extractor.extract("User John needs authentication")
 
         # Should have some entities from deterministic extraction
         assert context is not None
 
-    def test_extract_empty_prompt(self) -> None:
+    @pytest.mark.asyncio
+    async def test_extract_empty_prompt(self) -> None:
         """Test extraction with empty prompt."""
         extractor = HybridContextExtractor()
-        context = extractor.extract("")
+        context = await extractor.extract("")
 
         assert context.source_prompt == ""
         assert len(context.get_all_entities()) == 0
@@ -376,10 +381,11 @@ class TestDeduplication:
 class TestEndToEnd:
     """End-to-end extraction tests."""
 
-    def test_e2e_deterministic_only(self) -> None:
+    @pytest.mark.asyncio
+    async def test_e2e_deterministic_only(self) -> None:
         """Test end-to-end deterministic-only extraction."""
         extractor = HybridContextExtractor()
-        context = extractor.extract(
+        context = await extractor.extract(
             "Build a dashboard with user authentication. "
             "Admin users should have full access. "
             "Response time must be under 200ms."
@@ -388,7 +394,8 @@ class TestEndToEnd:
         assert context is not None
         assert len(context.get_all_entities()) > 0
 
-    def test_e2e_with_provider_fallback(self) -> None:
+    @pytest.mark.asyncio
+    async def test_e2e_with_provider_fallback(self) -> None:
         """Test end-to-end with LLM fallback."""
         config = ProviderConfig(model="test-model")
         provider = MockProvider(config)
@@ -412,25 +419,26 @@ class TestEndToEnd:
 
         extractor = HybridContextExtractor(provider=provider)
         # This should trigger LLM fallback because no user_persona is extracted
-        context = extractor.extract("Build a simple app")
+        context = await extractor.extract("Build a simple app")
 
         # Should have entities from either deterministic or LLM
         assert context is not None
 
-    def test_e2e_llm_failure_fallback(self) -> None:
+    @pytest.mark.asyncio
+    async def test_e2e_llm_failure_fallback(self) -> None:
         """Test that deterministic is used when LLM fails."""
         config = ProviderConfig(model="test-model")
         provider = MockProvider(config)
 
-        def raise_error(*args: Any, **kwargs: Any) -> str:
+        async def raise_error(*args: Any, **kwargs: Any) -> str:
             raise Exception("LLM error")
 
-        provider.generate = raise_error
+        provider.generate = raise_error  # type: ignore
 
         extractor = HybridContextExtractor(provider=provider)
 
         # Extract with deterministic finding entities
-        context = extractor.extract("User John needs authentication")
+        context = await extractor.extract("User John needs authentication")
 
         # Should fall back to deterministic
         assert context is not None
