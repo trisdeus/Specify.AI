@@ -869,23 +869,22 @@ def fetch_openai_models(api_key: str) -> list[str]:
 
 def fetch_anthropic_models(api_key: str) -> list[str]:
     """
-    Fetch available models from Anthropic API.
+    Return common Anthropic models.
 
     Note: Anthropic's API doesn't have a direct "list models" endpoint,
-    so this returns common Anthropic models. The API key is validated
-    by making a minimal request.
+    so this returns common Anthropic models without making an API call.
+    The API key is accepted for interface consistency but not used.
+    Key validation happens naturally when the user attempts to generate
+    documents, avoiding unnecessary API credit consumption.
 
     Args:
-        api_key: The Anthropic API key.
+        api_key: The Anthropic API key (not used, for interface consistency).
 
     Returns:
         List of common Anthropic model names.
-
-    Raises:
-        Exception: If the API call fails (invalid key, etc.).
     """
-    # Anthropic doesn't have a public list models API, so we validate
-    # the key and return common models
+    # Common Anthropic models - returned without API validation
+    # to avoid consuming user credits
     common_models = [
         "claude-3-opus-20240229",
         "claude-3-sonnet-20240229",
@@ -895,46 +894,7 @@ def fetch_anthropic_models(api_key: str) -> list[str]:
         "claude-3-5-haiku-20241022",
     ]
 
-    try:
-        # Validate the API key by making a minimal request
-        # We'll use the messages API with a very short message
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-
-        # Make a minimal request to validate the key
-        # Using messages API - this will fail fast if key is invalid
-        payload = {
-            "model": "claude-3-haiku-20240307",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "Hi"}],
-        }
-
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json=payload,
-            timeout=10,
-        )
-
-        # Check for auth errors
-        if response.status_code == 401:
-            raise Exception("Invalid Anthropic API key.")
-        elif response.status_code == 403:
-            raise Exception("Access forbidden. Check your API key permissions.")
-
-        # Any response (even 400) means the key is valid
-        # (400 would be for invalid request format, not auth)
-        return common_models
-
-    except requests.exceptions.ConnectionError as e:
-        raise Exception("Could not connect to Anthropic API. Check your internet connection.") from e
-    except requests.exceptions.Timeout as e:
-        raise Exception("Request to Anthropic API timed out.") from e
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Failed to validate Anthropic API key: {e}") from e
+    return common_models
 
 
 # ─────────────────────────────────────────────────────────────────────────────
