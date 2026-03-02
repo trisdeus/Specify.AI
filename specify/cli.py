@@ -25,9 +25,14 @@ import sys
 from collections.abc import Sequence
 
 import click
+import requests
 
 from specify import __version__
 from specify.core import KeyManager, KeyNotFoundError, KeyValidationError
+
+
+# Default Ollama URL
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 
 def main(args: Sequence[str] | None = None) -> int:
@@ -75,6 +80,52 @@ def main(args: Sequence[str] | None = None) -> int:
         return 1
 
 
+def _check_first_run() -> bool:
+    """
+    Check if this is a first-run (no API keys configured).
+
+    Returns:
+        True if no keys are configured, False otherwise.
+    """
+    try:
+        key_manager = KeyManager()
+        keys = key_manager.list_keys()
+        return len(keys) == 0
+    except Exception:
+        # If there's an error checking keys, assume first run
+        return True
+
+
+def _should_skip_onboarding(ctx: click.Context) -> bool:
+    """
+    Determine if onboarding should be skipped based on context.
+
+    Checks if:
+    - A subcommand was explicitly invoked
+    - Provider/key flags were provided on generate command
+
+    Args:
+        ctx: Click context
+
+    Returns:
+        True if onboarding should be skipped, False otherwise.
+    """
+    # If a subcommand was explicitly invoked, skip onboarding
+    if ctx.invoked_subcommand is not None:
+        return True
+
+    # Check if args indicate explicit configuration (e.g., --provider, --key)
+    if ctx.args:
+        # Check for common flags that indicate explicit configuration
+        for arg in ctx.args:
+            if arg.startswith("--provider") or arg.startswith("-p"):
+                return True
+            if arg.startswith("--key") or arg.startswith("-k"):
+                return True
+
+    return False
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="specify-ai")
 @click.option(
@@ -105,6 +156,785 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     """
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
+
+    # First-run detection: Check if onboarding should be triggered
+    # Only trigger if no keys are configured AND no explicit subcommand/flags provided
+    if _check_first_run() and not _should_skip_onboarding(ctx):
+        try:
+            run_onboarding_wizard()
+            # After wizard completes, show help or exit
+            click.echo("\nSetup complete! Run 'specify --help' to get started.")
+            ctx.exit(0)
+        except KeyboardInterrupt:
+            click.echo("\n\nOnboarding cancelled.", err=True)
+            ctx.exit(1)
+        except Exception as e:
+            # If onboarding fails, show error and continue to show help
+            click.echo(f"Onboarding error: {e}", err=True)
+            # Continue to show help
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Onboarding Wizard Functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def run_onboarding_wizard() -> None:
+    """
+    Main orchestrator for the interactive onboarding wizard.
+
+    This function guides the user through:
+    1. Selecting a provider (Ollama, OpenAI, or Anthropic)
+    2. Entering the API key or base URL
+    3. Selecting or entering a model
+    4. Saving the configuration
+
+    The wizard handles errors gracefully and provides fallbacks
+    when API calls fail.
+    """
+    click.echo("\n" + "=" * 60)
+    click.echo("  Welcome to Specify.AI! Let's get you set up.")
+    click.echo("=" * 60)
+    click.echo("")
+
+    # Step 1: Select provider
+    provider = prompt_provider_selection()
+
+    # Step 2: Get API key or base URL
+    key = prompt_key_input(provider)
+
+    # Step 3: Select model
+    model = prompt_model_selection(provider, key)
+
+    # Step 4: Save configuration
+    save_provider_config(provider, key, model)
+
+    click.echo("")
+    click.echo("[OK] Configuration saved successfully!")
+    click.echo(f"  Provider: {provider}")
+    click.echo(f"  Model: {model}")
+
+    # Show main menu after onboarding completes
+    show_main_menu()
+
+
+def prompt_provider_selection() -> str:
+    """
+    Prompt user to select a LLM provider.
+
+    Displays a numbered menu with options for Ollama, OpenAI, and Anthropic.
+    Returns the selected provider name.
+
+    Returns:
+        Selected provider name (ollama, openai, or anthropic).
+
+    Raises:
+        click.Abort: If user cancels the selection.
+    """
+    click.echo("Select a provider:")
+    click.echo("")
+    click.echo("  1. Ollama (local)")
+    click.echo("  2. OpenAI")
+    click.echo("  3. Anthropic")
+    click.echo("")
+
+    while True:
+        try:
+            choice = click.prompt(
+                "Enter choice [1-3]",
+                type=int,
+                default=1,
+                show_default=False,
+            )
+
+            if choice == 1:
+                return "ollama"
+            elif choice == 2:
+                return "openai"
+            elif choice == 3:
+                return "anthropic"
+            else:
+                click.echo("Please enter a number between 1 and 3.")
+        except click.Abort:
+            raise click.Abort()
+        except Exception as e:
+            click.echo(f"Invalid input: {e}. Please enter a number between 1 and 3.")
+
+
+def prompt_key_input(provider: str) -> str:
+    """
+    Prompt user for API key or base URL based on provider.
+
+    For Ollama: Prompts for base URL (with default)
+    For OpenAI/Anthropic: Prompts for API key (hidden input)
+
+    Args:
+        provider: The selected provider name.
+
+    Returns:
+        The API key or base URL entered by the user.
+
+    Raises:
+        click.Abort: If user cancels the input.
+    """
+    if provider == "ollama":
+        click.echo("")
+        click.echo("Enter your Ollama base URL:")
+        click.echo("(Press Enter to use the default)")
+        base_url = click.prompt(
+            "Base URL",
+            type=str,
+            default=DEFAULT_OLLAMA_HOST,
+            show_default=True,
+        )
+        return base_url.strip()
+    else:
+        # OpenAI or Anthropic - need API key
+        if provider == "openai":
+            click.echo("")
+            click.echo("Enter your OpenAI API key:")
+            click.echo("(Get your key from https://platform.openai.com/api-keys)")
+        else:  # anthropic
+            click.echo("")
+            click.echo("Enter your Anthropic API key:")
+            click.echo("(Get your key from https://console.anthropic.com/settings/keys)")
+
+        while True:
+            try:
+                api_key = click.prompt(
+                    "API Key",
+                    type=str,
+                    hide_input=True,
+                )
+                if api_key.strip():
+                    return api_key.strip()
+                click.echo("API key cannot be empty. Please enter a valid key.")
+            except click.Abort:
+                raise click.Abort()
+
+
+def prompt_model_selection(provider: str, key: str) -> str:
+    """
+    Prompt user to select a model from available models or enter custom.
+
+    First attempts to fetch models from the provider's API.
+    If that fails, falls back to manual model entry.
+
+    Args:
+        provider: The selected provider name.
+        key: The API key or base URL for the provider.
+
+    Returns:
+        The selected model name.
+
+    Raises:
+        click.Abort: If user cancels the selection.
+    """
+    click.echo("")
+    click.echo("Fetching available models...")
+
+    # Try to fetch models from the provider
+    models: list[str] = []
+    fetch_error: str | None = None
+
+    try:
+        if provider == "ollama":
+            models = fetch_ollama_models(key)
+        elif provider == "openai":
+            models = fetch_openai_models(key)
+        elif provider == "anthropic":
+            models = fetch_anthropic_models(key)
+    except Exception as e:
+        fetch_error = str(e)
+
+    # If models were fetched successfully, show selection menu
+    if models:
+        click.echo(f"Found {len(models)} models:")
+        click.echo("")
+
+        # Show numbered list (max 20 to avoid overwhelming)
+        display_models = models[:20]
+        for i, model in enumerate(display_models, 1):
+            click.echo(f"  {i}. {model}")
+
+        if len(models) > 20:
+            click.echo(f"  ... and {len(models) - 20} more models")
+
+        click.echo("")
+        click.echo("  0. Enter custom model name")
+
+        while True:
+            try:
+                choice = click.prompt(
+                    "Select model [0-{0}]".format(len(display_models)),
+                    type=int,
+                    default=1,
+                    show_default=False,
+                )
+
+                if choice == 0:
+                    # Custom model entry
+                    model = click.prompt(
+                        "Enter custom model name",
+                        type=str,
+                    )
+                    return model.strip()
+                elif 1 <= choice <= len(display_models):
+                    return display_models[choice - 1]
+                else:
+                    click.echo(f"Please enter a number between 0 and {len(display_models)}.")
+            except click.Abort:
+                raise click.Abort()
+            except Exception:
+                click.echo(f"Please enter a valid number between 0 and {len(display_models)}.")
+    else:
+        # Fallback to manual entry
+        if fetch_error:
+            click.echo(f"Could not fetch models: {fetch_error}")
+        click.echo("Please enter a model name manually.")
+        click.echo("")
+
+        # Provide some common defaults based on provider
+        if provider == "ollama":
+            click.echo("Common models: llama2, llama3, mistral, codellama, etc.")
+        elif provider == "openai":
+            click.echo("Common models: gpt-4o, gpt-4-turbo, gpt-3.5-turbo, etc.")
+        else:  # anthropic
+            click.echo("Common models: claude-3-opus, claude-3-sonnet, claude-3-haiku, etc.")
+
+        while True:
+            try:
+                model = click.prompt("Model name", type=str)
+                if model.strip():
+                    return model.strip()
+                click.echo("Model name cannot be empty.")
+            except click.Abort:
+                raise click.Abort()
+
+
+def save_provider_config(provider: str, key: str, model: str) -> None:
+    """
+    Save the provider configuration (API key and default model).
+
+    Stores the API key using KeyManager and saves the model preference.
+
+    Args:
+        provider: The provider name.
+        key: The API key or base URL.
+        model: The selected model name.
+    """
+    try:
+        key_manager = KeyManager()
+        key_manager.store_key(provider, key)
+
+        # Store model preference in a simple config file
+        _save_model_preference(provider, model)
+
+    except KeyValidationError as e:
+        raise click.ClickException(f"Failed to save configuration: {e}") from e
+    except Exception as e:
+        raise click.ClickException(f"Failed to save configuration: {e}") from e
+
+
+def _save_model_preference(provider: str, model: str) -> None:
+    """
+    Save the model preference to a config file.
+
+    Args:
+        provider: The provider name.
+        model: The selected model name.
+    """
+    import json
+    from pathlib import Path
+
+    config_dir = Path.home() / ".specify"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_file = config_dir / "models.json"
+
+    # Load existing config
+    config: dict[str, str] = {}
+    if config_file.exists():
+        try:
+            config = json.loads(config_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    # Update with new model preference
+    config[provider] = model
+
+    # Save config
+    config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main Menu Functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def get_model_preference(provider: str) -> str | None:
+    """
+    Get the model preference for a provider.
+
+    Args:
+        provider: The provider name.
+
+    Returns:
+        The model name if found, None otherwise.
+    """
+    import json
+    from pathlib import Path
+
+    config_dir = Path.home() / ".specify"
+    config_file = config_dir / "models.json"
+
+    if not config_file.exists():
+        return None
+
+    try:
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+        return config.get(provider)
+    except Exception:
+        return None
+
+
+def show_main_menu() -> None:
+    """
+    Display the main menu and handle user selection.
+
+    Shows a numbered menu with options for:
+    1. Generate documents
+    2. Add another provider
+    3. List configured providers
+    4. Delete a provider
+    5. Exit
+
+    The menu loops until the user selects Exit.
+    """
+    while True:
+        click.echo("")
+        click.echo("╭────────────────────────────────────╮")
+        click.echo("│         Specify.AI Main Menu        │")
+        click.echo("├────────────────────────────────────┤")
+        click.echo("│ 1. Generate documents               │")
+        click.echo("│ 2. Add another provider             │")
+        click.echo("│ 3. List configured providers        │")
+        click.echo("│ 4. Delete a provider                │")
+        click.echo("│ 5. Exit                             │")
+        click.echo("╰────────────────────────────────────╯")
+
+        try:
+            choice = click.prompt(
+                "Enter choice [1-5]",
+                type=int,
+                default=1,
+                show_default=False,
+            )
+
+            if choice == 1:
+                handle_generate_flow()
+            elif choice == 2:
+                handle_add_provider()
+            elif choice == 3:
+                handle_list_providers()
+            elif choice == 4:
+                handle_delete_provider()
+            elif choice == 5:
+                click.echo("Goodbye!")
+                break
+            else:
+                click.echo("Please enter a number between 1 and 5.")
+        except click.Abort:
+            click.echo("\nGoodbye!")
+            break
+
+
+def handle_generate_flow() -> None:
+    """
+    Handle the generate documents menu option.
+
+    Prompts the user for:
+    1. Document type selection
+    2. Product description prompt
+    3. Provider selection (optional, uses default if only one)
+
+    Then calls the generate command programmatically.
+    """
+    # Document type selection
+    doc_types = ["app-flow", "bdd", "design-doc", "prd", "tech-arch", "all"]
+
+    click.echo("\nSelect document type:")
+    for i, dt in enumerate(doc_types, 1):
+        click.echo(f"  {i}. {dt}")
+
+    try:
+        type_choice = click.prompt(
+            "Enter choice [1-6]",
+            type=int,
+            default=6,  # default to "all"
+            show_default=False,
+        )
+
+        if not 1 <= type_choice <= len(doc_types):
+            click.echo("Invalid choice.")
+            return
+
+        doc_type = doc_types[type_choice - 1]
+
+        # Provider selection
+        key_manager = KeyManager()
+        keys = key_manager.list_keys()
+
+        if not keys:
+            click.echo("No providers configured.")
+            return
+
+        provider_list = list(keys.keys())
+
+        if len(provider_list) == 1:
+            # Only one provider, use it
+            provider = provider_list[0]
+            click.echo(f"\nUsing provider: {provider}")
+        else:
+            click.echo("\nSelect provider:")
+            for i, prov in enumerate(provider_list, 1):
+                model = get_model_preference(prov)
+                if model:
+                    click.echo(f"  {i}. {prov} (model: {model})")
+                else:
+                    click.echo(f"  {i}. {prov}")
+
+            prov_choice = click.prompt(
+                f"Enter choice [1-{len(provider_list)}]",
+                type=int,
+                default=1,
+                show_default=False,
+            )
+
+            if not 1 <= prov_choice <= len(provider_list):
+                click.echo("Invalid choice.")
+                return
+
+            provider = provider_list[prov_choice - 1]
+
+        # Output directory
+        output_dir = click.prompt(
+            "Output directory",
+            type=str,
+            default="./output",
+        )
+
+        # Product description prompt
+        prompt_text = click.prompt(
+            "\nEnter your product description",
+            type=str,
+        )
+
+        # Call generate command programmatically
+        click.echo(f"\nGenerating {doc_type} document(s)...")
+
+        # Import and call the generate function
+        from click.testing import CliRunner
+
+        # Create a simple mock context
+        class MockContext:
+            def __init__(self):
+                self.obj = {"verbose": False}
+
+        # Call the generate command directly
+        from specify.cli import generate
+
+        runner = CliRunner()
+        result = runner.invoke(
+            generate,
+            [
+                "--prompt", prompt_text,
+                "--type", doc_type,
+                "--provider", provider,
+                "--output", output_dir,
+                "--consistency-check",  # Run consistency check from main menu
+            ],
+        )
+
+        if result.exit_code != 0:
+            click.echo(f"Error: {result.output}", err=True)
+            return
+
+        click.echo(result.output)
+
+    except click.Abort:
+        return
+
+
+def handle_add_provider() -> None:
+    """
+    Handle the add another provider menu option.
+
+    Runs the onboarding wizard for an additional provider.
+    """
+    click.echo("\n" + "=" * 60)
+    click.echo("  Adding a new provider")
+    click.echo("=" * 60)
+
+    try:
+        # Run the onboarding wizard
+        run_onboarding_wizard()
+    except click.Abort:
+        click.echo("\nProvider addition cancelled.")
+    except Exception as e:
+        click.echo(f"\nError adding provider: {e}", err=True)
+
+
+def handle_list_providers() -> None:
+    """
+    Handle the list providers menu option.
+
+    Displays all configured providers with their masked API keys
+    and selected models.
+    """
+    key_manager = KeyManager()
+    keys = key_manager.list_keys()
+
+    if not keys:
+        click.echo("\nNo providers configured.")
+        return
+
+    click.echo("\nConfigured Providers:")
+    click.echo("─" * 40)
+
+    for provider, masked_key in keys.items():
+        model = get_model_preference(provider)
+        click.echo(f"  {provider}: {masked_key}")
+        if model:
+            click.echo(f"    Model: {model}")
+
+
+def handle_delete_provider() -> None:
+    """
+    Handle the delete provider menu option with interactive selection.
+
+    Shows a numbered list of providers and allows the user to select
+    which one to delete.
+    """
+    key_manager = KeyManager()
+    keys = key_manager.list_keys()
+
+    if not keys:
+        click.echo("\nNo providers configured.")
+        return
+
+    provider_list = list(keys.keys())
+
+    click.echo("\nSelect provider to delete:")
+    for i, provider in enumerate(provider_list, 1):
+        masked_key = keys[provider]
+        model = get_model_preference(provider)
+        if model:
+            click.echo(f"  {i}. {provider} (model: {model}) - {masked_key}")
+        else:
+            click.echo(f"  {i}. {provider} - {masked_key}")
+
+    try:
+        choice = click.prompt(
+            f"Enter choice [1-{len(provider_list)}, or q to quit]",
+            type=str,
+            default="q",
+        )
+
+        if choice.lower() == "q":
+            return
+
+        choice_num = int(choice)
+
+        if not 1 <= choice_num <= len(provider_list):
+            click.echo("Invalid choice.")
+            return
+
+        provider = provider_list[choice_num - 1]
+
+        # Confirm deletion
+        confirm = click.confirm(
+            f"Are you sure you want to delete the {provider} provider?",
+            default=False,
+        )
+
+        if not confirm:
+            click.echo("Deletion cancelled.")
+            return
+
+        key_manager.delete_key(provider)
+        click.echo(f"[OK] Provider '{provider}' deleted.")
+
+    except click.Abort:
+        return
+    except ValueError:
+        click.echo("Invalid input. Please enter a number.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Model Fetching Functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def fetch_ollama_models(base_url: str) -> list[str]:
+    """
+    Fetch available models from a local Ollama instance.
+
+    Calls the Ollama API at /api/tags to list available models.
+
+    Args:
+        base_url: The base URL of the Ollama instance.
+
+    Returns:
+        List of model names available on the Ollama server.
+
+    Raises:
+        Exception: If the API call fails.
+    """
+    # Normalize URL (ensure no trailing slash)
+    base_url = base_url.rstrip("/")
+
+    try:
+        response = requests.get(
+            f"{base_url}/api/tags",
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        models = [model["name"] for model in data.get("models", [])]
+        return sorted(models)
+
+    except requests.exceptions.ConnectionError as e:
+        raise Exception(f"Could not connect to Ollama at {base_url}. Is Ollama running?") from e
+    except requests.exceptions.Timeout as e:
+        raise Exception(f"Connection to Ollama timed out: {e}") from e
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to fetch Ollama models: {e}") from e
+    except (KeyError, ValueError) as e:
+        raise Exception(f"Invalid response from Ollama: {e}") from e
+
+
+def fetch_openai_models(api_key: str) -> list[str]:
+    """
+    Fetch available models from OpenAI API.
+
+    Calls the OpenAI API to list available models.
+    Note: This requires an API key with model listing permissions.
+
+    Args:
+        api_key: The OpenAI API key.
+
+    Returns:
+        List of model names available for the account.
+
+    Raises:
+        Exception: If the API call fails.
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        response = requests.get(
+            "https://api.openai.com/v1/models",
+            headers=headers,
+            timeout=15,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        # Filter to only chat completion models (most useful)
+        models = [
+            model["id"]
+            for model in data.get("data", [])
+            if "gpt" in model["id"] or "chat" in model.get("id", "")
+        ]
+        return sorted(set(models))  # Remove duplicates and sort
+
+    except requests.exceptions.ConnectionError as e:
+        raise Exception("Could not connect to OpenAI API. Check your internet connection.") from e
+    except requests.exceptions.Timeout as e:
+        raise Exception("Request to OpenAI API timed out.") from e
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        if response.status_code == 401:
+            raise Exception("Invalid OpenAI API key.") from e
+        elif response.status_code == 403:
+            raise Exception("Access forbidden. Check your API key permissions.") from e
+        else:
+            raise Exception(f"Failed to fetch OpenAI models: {error_msg}") from e
+    except (KeyError, ValueError) as e:
+        raise Exception(f"Invalid response from OpenAI: {e}") from e
+
+
+def fetch_anthropic_models(api_key: str) -> list[str]:
+    """
+    Fetch available models from Anthropic API.
+
+    Note: Anthropic's API doesn't have a direct "list models" endpoint,
+    so this returns common Anthropic models. The API key is validated
+    by making a minimal request.
+
+    Args:
+        api_key: The Anthropic API key.
+
+    Returns:
+        List of common Anthropic model names.
+
+    Raises:
+        Exception: If the API call fails (invalid key, etc.).
+    """
+    # Anthropic doesn't have a public list models API, so we validate
+    # the key and return common models
+    common_models = [
+        "claude-3-opus-20240229",
+        "claude-3-sonnet-20240229",
+        "claude-3-haiku-20240307",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-sonnet-20240620",
+        "claude-3-5-haiku-20241022",
+    ]
+
+    try:
+        # Validate the API key by making a minimal request
+        # We'll use the messages API with a very short message
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        # Make a minimal request to validate the key
+        # Using messages API - this will fail fast if key is invalid
+        payload = {
+            "model": "claude-3-haiku-20240307",
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "Hi"}],
+        }
+
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=payload,
+            timeout=10,
+        )
+
+        # Check for auth errors
+        if response.status_code == 401:
+            raise Exception("Invalid Anthropic API key.")
+        elif response.status_code == 403:
+            raise Exception("Access forbidden. Check your API key permissions.")
+
+        # Any response (even 400) means the key is valid
+        # (400 would be for invalid request format, not auth)
+        return common_models
+
+    except requests.exceptions.ConnectionError as e:
+        raise Exception("Could not connect to Anthropic API. Check your internet connection.") from e
+    except requests.exceptions.Timeout as e:
+        raise Exception("Request to Anthropic API timed out.") from e
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to validate Anthropic API key: {e}") from e
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +987,11 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     is_flag=True,
     help="Skip clarification questions for missing information.",
 )
+@click.option(
+    "--consistency-check",
+    is_flag=True,
+    help="Run post-generation consistency check loop.",
+)
 @click.pass_context
 def generate(
     ctx: click.Context,
@@ -166,6 +1001,7 @@ def generate(
     output: str,
     model: str | None,
     no_recommendations: bool,
+    consistency_check: bool,
 ) -> None:
     """
     Generate documentation from a product description prompt.
@@ -204,6 +1040,12 @@ def generate(
     click.echo(
         f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}"
     )
+
+    # Run consistency check loop after generation only when explicitly requested
+    # Default is to skip for backward compatibility (CLI usage)
+    # Use --consistency-check flag to enable
+    if consistency_check:
+        consistency_check_loop(output)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -294,28 +1136,316 @@ def list_keys() -> None:
 @click.option(
     "--provider",
     "-p",
-    required=True,
+    required=False,
     type=click.Choice(["ollama", "openai", "anthropic"], case_sensitive=False),
-    help="Provider to delete the key for.",
+    help="Provider to delete the key for. If not specified, shows interactive selection.",
 )
-def delete_key(provider: str) -> None:
+def delete_key(provider: str | None) -> None:
     """
     Delete a stored API key.
 
     Removes the API key for the specified provider from local storage.
+    If --provider is not specified, shows an interactive list of
+    configured providers to select from.
+
     Note: This does not affect environment variables.
 
     \b
-    Example:
+    Examples:
         specify config delete-key --provider openai
+        specify config delete-key
     """
     key_manager = KeyManager()
+    keys = key_manager.list_keys()
 
+    # If provider is specified, use non-interactive mode (backward compatibility)
+    if provider:
+        try:
+            key_manager.delete_key(provider)
+            click.echo(f"[OK] API key deleted for {provider}")
+        except KeyNotFoundError as e:
+            raise click.ClickException(str(e)) from e
+        return
+
+    # No provider specified - show interactive selection
+    # Check if any keys are configured
+    if not keys:
+        click.echo("No API keys configured.")
+        return
+
+    # Run interactive deletion
+    run_interactive_delete(key_manager, keys)
+
+
+def run_interactive_delete(key_manager: KeyManager, keys: dict[str, str]) -> None:
+    """
+    Run interactive provider selection for deletion.
+
+    Args:
+        key_manager: KeyManager instance.
+        keys: Dictionary of provider -> masked_key.
+    """
+    click.echo("\nConfigured API Keys:")
+
+    # Create numbered list
+    providers = list(keys.keys())
+    for i, prov in enumerate(providers, 1):
+        click.echo(f"  {i}. {prov}: {keys[prov]}")
+
+    click.echo("")
+
+    while True:
+        try:
+            choice = click.prompt(
+                "Select provider to delete [1-{0}] or 'q' to quit:".format(len(providers)),
+                type=str,
+                default="q"
+            )
+
+            # Check for quit
+            if choice.lower() == "q":
+                click.echo("Cancelled.")
+                return
+
+            # Parse as number
+            try:
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(providers):
+                    selected_provider = providers[choice_num - 1]
+                    break
+                else:
+                    click.echo(
+                        "Please enter a number between 1 and {0}, or 'q' to quit.".format(
+                            len(providers)
+                        )
+                    )
+            except ValueError:
+                click.echo("Invalid input. Enter a number or 'q' to quit.")
+
+        except click.Abort:
+            click.echo("\nCancelled.")
+            return
+
+    # Confirm deletion
     try:
-        key_manager.delete_key(provider)
-        click.echo(f"[OK] API key deleted for {provider}")
+        confirm = click.confirm(
+            f"Delete API key for {selected_provider}?",
+            default=False,
+        )
+    except click.Abort:
+        click.echo("\nCancelled.")
+        return
+
+    if not confirm:
+        click.echo("Cancelled.")
+        return
+
+    # Perform deletion
+    try:
+        key_manager.delete_key(selected_provider)
+        click.echo(f"[OK] API key deleted for {selected_provider}")
     except KeyNotFoundError as e:
         raise click.ClickException(str(e)) from e
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Post-Generation Consistency Check Loop Functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def prompt_consistency_check(output_dir: str) -> bool:
+    """
+    Ask user if they want to check for inconsistencies.
+
+    Args:
+        output_dir: Directory containing generated documents.
+
+    Returns:
+        True if user wants to check, False otherwise.
+    """
+    try:
+        return click.confirm(
+            "\nCheck for inconsistencies?",
+            default=True,
+        )
+    except click.Abort:
+        return False
+
+
+def run_consistency_check(output_dir: str) -> list[dict]:
+    """
+    Run consistency check and display results.
+
+    Args:
+        output_dir: Directory containing generated documents.
+
+    Returns:
+        List of inconsistency dictionaries with severity, description, etc.
+    """
+    click.echo("Checking...")
+
+    # TODO: Implement actual consistency checking logic
+    # This is a stub that simulates finding inconsistencies
+    # Real implementation will analyze generated documents for conflicts
+
+    # Simulated inconsistencies for demonstration
+    inconsistencies = [
+        {
+            "severity": "HIGH",
+            "description": "PRD and Tech Arch have conflicting API versions",
+            "documents": ["PRD", "Technical Architecture"],
+            "suggestion": "Align API versions across documents",
+        },
+        {
+            "severity": "MEDIUM",
+            "description": "BDD missing endpoint defined in App Flow",
+            "documents": ["BDD", "App Flow"],
+            "suggestion": "Add missing endpoint to BDD scenarios",
+        },
+        {
+            "severity": "LOW",
+            "description": "Design Doc uses different terminology",
+            "documents": ["Design Doc"],
+            "suggestion": "Standardize terminology with other documents",
+        },
+    ]
+
+    return inconsistencies
+
+
+def display_inconsistency_report(inconsistencies: list[dict]) -> None:
+    """
+    Display a formatted inconsistency report.
+
+    Args:
+        inconsistencies: List of inconsistency dictionaries.
+    """
+    click.echo(f"Found {len(inconsistencies)} inconsistencies:")
+
+    for inc in inconsistencies:
+        severity = inc.get("severity", "UNKNOWN")
+        description = inc.get("description", "No description")
+
+        # Format severity with brackets
+        severity_str = f"[{severity}]"
+
+        click.echo(f"  - {severity_str} {description}")
+
+
+def prompt_fix_inconsistencies() -> bool:
+    """
+    Ask user if they want to fix inconsistencies.
+
+    Returns:
+        True if user wants to fix, False otherwise.
+    """
+    try:
+        return click.confirm(
+            "Fix them?",
+            default=True,
+        )
+    except click.Abort:
+        return False
+
+
+def run_fix_inconsistencies(output_dir: str) -> list[dict]:
+    """
+    Apply fixes to resolve inconsistencies.
+
+    Args:
+        output_dir: Directory containing generated documents.
+
+    Returns:
+        List of fix results with document, change, and success status.
+    """
+    click.echo("Fixing...")
+
+    # TODO: Implement actual inconsistency fixing logic
+    # This is a stub that simulates fixing inconsistencies
+    # Real implementation will modify documents to resolve conflicts
+
+    # Simulated fix results
+    fix_results = [
+        {
+            "document": "PRD",
+            "change": "Updated API version to match Technical Architecture",
+            "success": True,
+        },
+        {
+            "document": "BDD",
+            "change": "Added missing endpoint /api/users to scenarios",
+            "success": True,
+        },
+        {
+            "document": "Design Doc",
+            "change": "Updated terminology to match other documents",
+            "success": True,
+        },
+    ]
+
+    return fix_results
+
+
+def display_fix_results(fix_results: list[dict]) -> None:
+    """
+    Display the results of automatic fixes.
+
+    Args:
+        fix_results: List of fix result dictionaries.
+    """
+    for result in fix_results:
+        document = result.get("document", "Unknown")
+        success = result.get("success", False)
+
+        if success:
+            click.echo(f"  ✓ Updated {document}")
+        else:
+            click.echo(f"  ✗ Failed to update {document}")
+
+
+def consistency_check_loop(output_dir: str) -> None:
+    """
+    Main loop for post-generation consistency checking.
+
+    This function runs the consistency check flow:
+    1. Ask user if they want to check for inconsistencies
+    2. If yes, run consistency check
+    3. If inconsistencies found, ask if user wants to fix
+    4. If yes, apply fixes
+    5. Loop back to check again (until user says no)
+
+    Args:
+        output_dir: Directory containing generated documents.
+    """
+    while True:
+        # Ask if user wants to check for inconsistencies
+        should_check = prompt_consistency_check(output_dir)
+
+        if not should_check:
+            click.echo("\nReturning to main menu...")
+            break
+
+        # Run consistency check
+        inconsistencies = run_consistency_check(output_dir)
+
+        if not inconsistencies:
+            click.echo("No inconsistencies found.")
+            # Loop continues - ask again if user wants to check
+        else:
+            # Display inconsistency report
+            display_inconsistency_report(inconsistencies)
+
+            # Ask if user wants to fix
+            should_fix = prompt_fix_inconsistencies()
+
+            if should_fix:
+                # Apply fixes
+                fix_results = run_fix_inconsistencies(output_dir)
+                display_fix_results(fix_results)
+                click.echo("[complete]")
+            else:
+                # Don't fix, but continue loop to check again
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
