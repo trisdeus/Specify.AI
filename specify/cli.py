@@ -664,7 +664,6 @@ def handle_generate_flow() -> None:
                 "--type", doc_type,
                 "--provider", provider,
                 "--output", output_dir,
-                "--consistency-check",  # Run consistency check from main menu
             ],
         )
 
@@ -963,13 +962,11 @@ def fetch_anthropic_models(api_key: str) -> list[str]:
 @click.option(
     "--no-consistency-check",
     is_flag=True,
-    default=False,
     help="Skip post-generation consistency check prompt.",
 )
 @click.option(
     "--auto-fix",
     is_flag=True,
-    default=False,
     help="Automatically fix inconsistencies without prompting.",
 )
 @click.pass_context
@@ -1004,6 +1001,8 @@ def generate(
         specify generate -p "Build a task app" -t all
         specify generate -p "Build a task app" -t prd --provider openai
         specify generate -p "Build a task app" -t all -o ./my-docs
+        specify generate -p "Build a task app" -t all --no-consistency-check
+        specify generate -p "Build a task app" -t all --auto-fix
     """
     verbose = ctx.obj.get("verbose", False)
 
@@ -1023,7 +1022,8 @@ def generate(
     )
 
     # Run consistency check loop after generation by default
-    # Use --no-consistency-check flag to skip
+    # Skip if --no-consistency-check is provided
+    # If --auto-fix is provided, run consistency check with auto-fix enabled
     if not no_consistency_check:
         consistency_check_loop(output, auto_fix=auto_fix)
 
@@ -1400,7 +1400,11 @@ def consistency_check_loop(output_dir: str, auto_fix: bool = False) -> None:
     """
     while True:
         # Ask if user wants to check for inconsistencies
-        should_check = prompt_consistency_check(output_dir)
+        # If auto_fix is enabled, skip the prompt and check automatically
+        if auto_fix:
+            should_check = True
+        else:
+            should_check = prompt_consistency_check(output_dir)
 
         if not should_check:
             click.echo("\nReturning to main menu...")
@@ -1417,7 +1421,8 @@ def consistency_check_loop(output_dir: str, auto_fix: bool = False) -> None:
             display_inconsistency_report(inconsistencies)
 
             # Ask if user wants to fix
-            should_fix = prompt_fix_inconsistencies()
+            # If auto_fix is enabled, fix automatically without prompting
+            should_fix = auto_fix or prompt_fix_inconsistencies()
 
             if should_fix:
                 # Apply fixes
