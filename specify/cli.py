@@ -961,9 +961,16 @@ def fetch_anthropic_models(api_key: str) -> list[str]:
     help="Skip clarification questions for missing information.",
 )
 @click.option(
-    "--consistency-check",
+    "--no-consistency-check",
     is_flag=True,
-    help="Run post-generation consistency check loop.",
+    default=False,
+    help="Skip post-generation consistency check prompt.",
+)
+@click.option(
+    "--auto-fix",
+    is_flag=True,
+    default=False,
+    help="Automatically fix inconsistencies without prompting.",
 )
 @click.pass_context
 def generate(
@@ -974,7 +981,8 @@ def generate(
     output: str,
     model: str | None,
     no_recommendations: bool,
-    consistency_check: bool,
+    no_consistency_check: bool,
+    auto_fix: bool,
 ) -> None:
     """
     Generate documentation from a product description prompt.
@@ -1014,11 +1022,10 @@ def generate(
         f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}"
     )
 
-    # Run consistency check loop after generation only when explicitly requested
-    # Default is to skip for backward compatibility (CLI usage)
-    # Use --consistency-check flag to enable
-    if consistency_check:
-        consistency_check_loop(output)
+    # Run consistency check loop after generation by default
+    # Use --no-consistency-check flag to skip
+    if not no_consistency_check:
+        consistency_check_loop(output, auto_fix=auto_fix)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1376,7 +1383,7 @@ def display_fix_results(fix_results: list[dict]) -> None:
             click.echo(f"  ✗ Failed to update {document}")
 
 
-def consistency_check_loop(output_dir: str) -> None:
+def consistency_check_loop(output_dir: str, auto_fix: bool = False) -> None:
     """
     Main loop for post-generation consistency checking.
 
@@ -1389,6 +1396,7 @@ def consistency_check_loop(output_dir: str) -> None:
 
     Args:
         output_dir: Directory containing generated documents.
+        auto_fix: If True, automatically fix inconsistencies without prompting.
     """
     while True:
         # Ask if user wants to check for inconsistencies
