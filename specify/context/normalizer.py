@@ -104,7 +104,7 @@ class EntityNormalizer:
         
         Applies the following normalization rules:
         1. Convert to lowercase and strip whitespace
-        2. Apply term mappings for variant synonyms
+        2. Apply term mappings for variant synonyms (exact match only)
         3. Convert to title case for display
         
         Args:
@@ -125,15 +125,9 @@ class EntityNormalizer:
         # Lowercase and strip whitespace
         normalized = name.lower().strip()
         
-        # Apply term mappings (try exact match first, then partial)
+        # Apply term mappings (exact match only to avoid false positives)
         if normalized in self._term_mappings:
             normalized = self._term_mappings[normalized]
-        else:
-            # Try to find partial matches
-            for variant, canonical in self._term_mappings.items():
-                if variant in normalized or normalized in variant:
-                    normalized = canonical
-                    break
         
         # Convert to title case for display
         # Handle special cases like acronyms and hyphenated words
