@@ -34,7 +34,7 @@ import stat
 import subprocess
 import warnings
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TypedDict
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
@@ -54,6 +54,26 @@ ENV_VAR_MAPPING: Final[dict[str, str]] = {
 # Default config directory name in user's home directory
 CONFIG_DIR_NAME: Final[str] = ".specify"
 KEYS_FILE_NAME: Final[str] = "keys.json"
+
+
+class ProviderConfig(TypedDict, total=False):
+    """Type definition for provider configuration.
+
+    This TypedDict defines the structure for storing provider configuration
+    including the API key, model, and base URL.
+
+    Note:
+        API keys are encrypted before storage. Model and base_url are stored
+        as plain text since they are not sensitive credentials.
+
+    Attributes:
+        api_key: The encrypted API key for the provider (None for local providers).
+        model: Optional model name to use for this provider.
+        base_url: Optional base URL for the provider API.
+    """
+    api_key: str | None
+    model: str | None
+    base_url: str | None
 
 
 class EncryptionError(Exception):
@@ -501,22 +521,35 @@ class KeyManager:
         # Initialize CryptoManager for encryption/decryption
         self._crypto_manager = CryptoManager(self.config_dir)
 
-    def store_key(self, provider: str, key: str) -> None:
-        """Store an API key for a provider.
+    def store_key(
+        self,
+        provider: str,
+        key: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        """Store an API key and optional configuration for a provider.
 
-        Validates that the provider is valid and the key is not empty.
-        Creates the config directory if it doesn't exist.
+        Validates that the provider is valid. For providers other than ollama,
+        the key must be provided and non-empty. Creates the config directory
+        if it doesn't exist.
 
         Args:
             provider: The provider name (must be one of: ollama, openai, anthropic).
-            key: The API key to store.
+            key: The API key to store. Can be None for providers like ollama
+                 that don't require an API key.
+            model: Optional model name to use for this provider.
+            base_url: Optional base URL for the provider API.
 
         Raises:
-            KeyValidationError: If the provider is invalid or key is empty.
+            KeyValidationError: If the provider is invalid or key is empty
+                              (for providers other than ollama).
 
         Example:
             >>> km = KeyManager()
             >>> km.store_key("openai", "sk-proj-abc123")
+            >>> km.store_key("openai", "sk-proj-abc123", model="gpt-4")
+            >>> km.store_key("ollama", None, model="llama3", base_url="http://localhost:11434")
         """
         # Validate provider
         provider_lower = provider.lower()
@@ -526,9 +559,14 @@ class KeyManager:
                 f"Must be one of: {', '.join(sorted(VALID_PROVIDERS))}"
             )
 
-        # Validate key is not empty
-        if not key or not key.strip():
-            raise KeyValidationError("API key cannot be empty")
+        # Validate key is not empty (except for ollama which doesn't need a key)
+        if provider_lower != "ollama":
+            if not key or not key.strip():
+                raise KeyValidationError(
+                    f"API key is required for provider: {provider_lower}. "
+                    "Use store_key() with a valid key or set the environment variable."
+                )
+            key = key.strip()
 
         # Ensure config directory exists
         self._ensure_config_dir()
@@ -536,8 +574,21 @@ class KeyManager:
         # Load existing keys
         keys = self._load_keys()
 
-        # Store/update the key
-        keys[provider_lower] = key.strip()
+        # Store/update the key with configuration
+        if provider_lower not in keys:
+            keys[provider_lower] = {
+                "api_key": key,
+                "model": model,
+                "base_url": base_url,
+            }
+        else:
+            # Update existing config, preserving api_key if not provided
+            existing = keys[provider_lower]
+            keys[provider_lower] = {
+                "api_key": key if key is not None else existing.get("api_key"),
+                "model": model if model is not None else existing.get("model"),
+                "base_url": base_url if base_url is not None else existing.get("base_url"),
+            }
 
         # Save keys to file
         self._save_keys(keys)
@@ -570,7 +621,9 @@ class KeyManager:
         # 1. Check local store (JSON file)
         keys = self._load_keys()
         if provider_lower in keys:
-            return keys[provider_lower]
+            api_key = keys[provider_lower].get("api_key")
+            if api_key:
+                return api_key
 
         # 2. Check environment variables
         env_var_name = ENV_VAR_MAPPING.get(provider_lower)
@@ -608,10 +661,19 @@ class KeyManager:
             if provider not in keys:
                 env_value = os.environ.get(env_var)
                 if env_value:
-                    keys[provider] = env_value
+                    keys[provider] = {
+                        "api_key": env_value,
+                        "model": None,
+                        "base_url": None,
+                    }
 
         # Mask all keys for display
-        masked_keys = {provider: self._mask_key(key) for provider, key in keys.items()}
+        masked_keys = {}
+        for provider, config in keys.items():
+            api_key = config.get("api_key")
+            if api_key:
+                masked_keys[provider] = self._mask_key(api_key)
+
         return masked_keys
 
     def delete_key(self, provider: str) -> None:
@@ -668,7 +730,9 @@ class KeyManager:
         # Check local store
         keys = self._load_keys()
         if provider_lower in keys:
-            return True
+            api_key = keys[provider_lower].get("api_key")
+            if api_key:
+                return True
 
         # Check environment variables
         env_var_name = ENV_VAR_MAPPING.get(provider_lower)
@@ -676,6 +740,122 @@ class KeyManager:
             return os.environ.get(env_var_name) is not None
 
         return False
+
+    def any_keys_configured(self) -> bool:
+        """Check if any API keys are configured.
+
+        Checks both the local store and environment variables for any
+        configured API keys.
+
+        Returns:
+            True if at least one provider has a configured key, False otherwise.
+
+        Example:
+            >>> km = KeyManager()
+            >>> km.store_key("openai", "sk-test")
+            >>> km.any_keys_configured()
+            True
+        """
+        # Check local store
+        keys = self._load_keys()
+        for provider, config in keys.items():
+            if config.get("api_key"):
+                return True
+
+        # Check environment variables
+        for env_var in ENV_VAR_MAPPING.values():
+            if os.environ.get(env_var):
+                return True
+
+        return False
+
+    def list_providers(self) -> list[str]:
+        """List all configured provider names.
+
+        Returns providers that have configuration in the local store,
+        regardless of whether they have an API key set.
+
+        Returns:
+            Sorted list of provider names with stored configuration.
+
+        Example:
+            >>> km = KeyManager()
+            >>> km.store_key("openai", "sk-test")
+            >>> km.list_providers()
+            ['openai']
+        """
+        keys = self._load_keys()
+        return sorted(keys.keys())
+
+    def get_model(self, provider: str) -> str | None:
+        """Get the configured model for a provider.
+
+        Args:
+            provider: The provider name to look up.
+
+        Returns:
+            The configured model name, or None if not set or provider not found.
+
+        Example:
+            >>> km = KeyManager()
+            >>> km.store_key("openai", "sk-test", model="gpt-4")
+            >>> km.get_model("openai")
+            'gpt-4'
+        """
+        provider_lower = provider.lower()
+        keys = self._load_keys()
+
+        if provider_lower in keys:
+            return keys[provider_lower].get("model")
+
+        return None
+
+    def get_base_url(self, provider: str) -> str | None:
+        """Get the configured base URL for a provider.
+
+        Args:
+            provider: The provider name to look up.
+
+        Returns:
+            The configured base URL, or None if not set or provider not found.
+
+        Example:
+            >>> km = KeyManager()
+            >>> km.store_key("ollama", None, base_url="http://localhost:11434")
+            >>> km.get_base_url("ollama")
+            'http://localhost:11434'
+        """
+        provider_lower = provider.lower()
+        keys = self._load_keys()
+
+        if provider_lower in keys:
+            return keys[provider_lower].get("base_url")
+
+        return None
+
+    def get_provider_config(self, provider: str) -> dict | None:
+        """Get the full configuration for a provider.
+
+        Args:
+            provider: The provider name to look up.
+
+        Returns:
+            Dictionary with api_key, model, and base_url, or None if provider
+            not found in local store. Note: api_key is returned decrypted.
+
+        Example:
+            >>> km = KeyManager()
+            >>> km.store_key("openai", "sk-test", model="gpt-4")
+            >>> km.get_provider_config("openai")
+            {'api_key': 'sk-test', 'model': 'gpt-4', 'base_url': None}
+        """
+        provider_lower = provider.lower()
+        keys = self._load_keys()
+
+        if provider_lower in keys:
+            return dict(keys[provider_lower])
+
+        return None
 
     def _mask_key(self, key: str) -> str:
         """Mask a key for secure display.
@@ -701,15 +881,62 @@ class KeyManager:
 
         return f"{key[:3]}...{key[-3:]}"
 
-    def _load_keys(self) -> dict[str, str]:
+    def _migrate_old_format(self, keys: dict[str, Any]) -> dict[str, ProviderConfig]:
+        """Migrate old format keys to new nested format.
+
+        Converts old format where keys are simple strings to the new format
+        where each provider has a nested configuration object with api_key,
+        model, and base_url fields.
+
+        Args:
+            keys: Dictionary potentially containing old format keys (strings)
+                  or new format keys (dicts).
+
+        Returns:
+            Dictionary with new nested format for all providers.
+
+        Example:
+            >>> # Old format
+            >>> keys = {"openai": "sk-key123", "anthropic": "sk-key456"}
+            >>> km._migrate_old_format(keys)
+            {
+                "openai": {"api_key": "sk-key123", "model": None, "base_url": None},
+                "anthropic": {"api_key": "sk-key456", "model": None, "base_url": None}
+            }
+        """
+        result: dict[str, ProviderConfig] = {}
+
+        for key, value in keys.items():
+            # Skip metadata keys (starting with underscore)
+            if key.startswith("_"):
+                continue
+
+            if isinstance(value, str):
+                # Old format: simple string value
+                result[key] = {
+                    "api_key": value,
+                    "model": None,
+                    "base_url": None,
+                }
+            elif isinstance(value, dict):
+                # New format: already a dict
+                result[key] = {
+                    "api_key": value.get("api_key"),
+                    "model": value.get("model"),
+                    "base_url": value.get("base_url"),
+                }
+
+        return result
+
+    def _load_keys(self) -> dict[str, ProviderConfig]:
         """Load keys from the JSON file.
 
         Handles both encrypted and plain-text formats for backward compatibility.
-        If keys are stored in plain-text format, they are migrated to encrypted
-        format on next save.
+        Also handles old simple-string format and new nested-object format.
+        Migration from old format to new happens automatically on load.
 
         Returns:
-            Dictionary of provider -> key mappings (always decrypted).
+            Dictionary of provider -> ProviderConfig mappings (always decrypted).
             Returns empty dict if file doesn't exist or is empty.
 
         Raises:
@@ -730,7 +957,8 @@ class KeyManager:
             # Check if keys are encrypted
             is_encrypted = data.get("_encrypted", False)
 
-            result: dict[str, str] = {}
+            # Check if we have old format (version 1 or 2 with string values)
+            raw_keys: dict[str, Any] = {}
             needs_migration = False
 
             for key, value in data.items():
@@ -741,7 +969,19 @@ class KeyManager:
                 if is_encrypted:
                     # Decrypt the encrypted value
                     try:
-                        result[key] = self._crypto_manager.decrypt(value)
+                        if isinstance(value, dict):
+                            # New format: decrypt nested api_key
+                            decrypted_config: dict[str, Any] = {}
+                            for k, v in value.items():
+                                if k == "api_key" and v is not None:
+                                    decrypted_config[k] = self._crypto_manager.decrypt(v)
+                                else:
+                                    decrypted_config[k] = v
+                            raw_keys[key] = decrypted_config
+                        else:
+                            # Old format: decrypt simple string
+                            raw_keys[key] = self._crypto_manager.decrypt(value)
+                            needs_migration = True
                     except DecryptionError as e:
                         # Re-raise with context about which provider failed
                         raise DecryptionError(
@@ -754,8 +994,11 @@ class KeyManager:
                         ) from e
                 else:
                     # Plain text - needs migration to encrypted format
-                    result[key] = value
+                    raw_keys[key] = value
                     needs_migration = True
+
+            # Migrate to new format if needed
+            result = self._migrate_old_format(raw_keys)
 
             # Migrate plain-text keys to encrypted format on next save
             # This happens transparently when keys are saved again
@@ -779,11 +1022,14 @@ class KeyManager:
             # Re-raise DecryptionError without wrapping
             raise
 
-    def _save_keys(self, keys: dict[str, str]) -> None:
+    def _save_keys(self, keys: dict[str, ProviderConfig]) -> None:
         """Save keys to the JSON file in encrypted format.
 
+        Saves in version 3 format with nested configuration objects.
+        Only the api_key is encrypted; model and base_url are stored as plain text.
+
         Args:
-            keys: Dictionary of provider -> key mappings to save.
+            keys: Dictionary of provider -> ProviderConfig mappings to save.
 
         Raises:
             PermissionError: If unable to write to the keys file.
@@ -791,21 +1037,36 @@ class KeyManager:
         """
         try:
             # Encrypt each key value before storing
-            encrypted_keys: dict[str, Any] = {
-                "_version": 2,
+            encrypted_data: dict[str, Any] = {
+                "_version": 3,
                 "_encrypted": True,
             }
 
-            for provider, key in keys.items():
+            for provider, config in keys.items():
                 try:
-                    encrypted_keys[provider] = self._crypto_manager.encrypt(key)
+                    encrypted_config: dict[str, Any] = {}
+
+                    # Encrypt api_key if present
+                    if config.get("api_key"):
+                        encrypted_config["api_key"] = self._crypto_manager.encrypt(config["api_key"])
+                    else:
+                        encrypted_config["api_key"] = None
+
+                    # Store model and base_url as plain text.
+                    # These are configuration values, not sensitive credentials,
+                    # and don't require encryption. They may be displayed in CLI
+                    # output and are needed for provider API calls.
+                    encrypted_config["model"] = config.get("model")
+                    encrypted_config["base_url"] = config.get("base_url")
+
+                    encrypted_data[provider] = encrypted_config
                 except EncryptionError as e:
                     raise EncryptionError(
                         f"Failed to encrypt key for '{provider}': {e}"
                     ) from e
 
             with self.keys_file.open("w", encoding="utf-8") as f:
-                json.dump(encrypted_keys, f, indent=2, sort_keys=True)
+                json.dump(encrypted_data, f, indent=2, sort_keys=True)
             # Set restrictive permissions: owner read/write only (0600)
             self.keys_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
         except PermissionError as e:
