@@ -62,10 +62,6 @@ class ProviderConfig(TypedDict, total=False):
     This TypedDict defines the structure for storing provider configuration
     including the API key, model, and base URL.
 
-    Note:
-        API keys are encrypted before storage. Model and base_url are stored
-        as plain text since they are not sensitive credentials.
-
     Attributes:
         api_key: The encrypted API key for the provider (None for local providers).
         model: Optional model name to use for this provider.
@@ -707,37 +703,51 @@ class KeyManager:
         self._save_keys(keys)
 
     def key_exists(self, provider: str) -> bool:
-        """Check if a key exists for a provider.
+        """Check if a provider is configured.
 
-        Checks both the local JSON store and environment variables.
+        For providers that require API keys (openai, anthropic), checks if
+        an API key exists in the local store or environment variables.
+
+        For Ollama (which doesn't require an API key), checks if any
+        configuration exists (model, base_url, or OLLAMA_HOST env var).
 
         Args:
             provider: The provider name to check.
 
         Returns:
-            True if a key exists for the provider, False otherwise.
+            True if the provider is configured, False otherwise.
 
         Example:
             >>> km = KeyManager()
             >>> km.store_key("openai", "sk-test")
             >>> km.key_exists("openai")
             True
-            >>> km.key_exists("anthropic")
-            False
+            >>> km.store_key("ollama", None, model="llama3")
+            >>> km.key_exists("ollama")
+            True
         """
         provider_lower = provider.lower()
 
         # Check local store
         keys = self._load_keys()
         if provider_lower in keys:
-            api_key = keys[provider_lower].get("api_key")
-            if api_key:
-                return True
+            config = keys[provider_lower]
+            # For Ollama, check if any configuration exists
+            if provider_lower == "ollama":
+                if config.get("model") or config.get("base_url") or config.get("api_key"):
+                    return True
+            else:
+                # For other providers, require an API key
+                api_key = config.get("api_key")
+                if api_key:
+                    return True
 
         # Check environment variables
         env_var_name = ENV_VAR_MAPPING.get(provider_lower)
         if env_var_name:
-            return os.environ.get(env_var_name) is not None
+            env_value = os.environ.get(env_var_name)
+            if env_value:
+                return True
 
         return False
 
@@ -1052,10 +1062,7 @@ class KeyManager:
                     else:
                         encrypted_config["api_key"] = None
 
-                    # Store model and base_url as plain text.
-                    # These are configuration values, not sensitive credentials,
-                    # and don't require encryption. They may be displayed in CLI
-                    # output and are needed for provider API calls.
+                    # Store model and base_url as plain text (not sensitive)
                     encrypted_config["model"] = config.get("model")
                     encrypted_config["base_url"] = config.get("base_url")
 
