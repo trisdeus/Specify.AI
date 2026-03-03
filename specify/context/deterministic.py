@@ -187,12 +187,21 @@ class DeterministicExtractor:
         role_keywords = ["user", "customer", "admin", "manager", "developer", "administrator"]
         is_role = any(keyword in name.lower() for keyword in role_keywords)
         
+        # Collect aliases from the original name if it differs from normalized
+        aliases: list[str] = []
+        
         if is_role:
             role = name.title()
             persona_name = "User"
+            # Add the original role text as an alias
+            if name.lower() != role.lower():
+                aliases.append(name)
         else:
             role = "User"
             persona_name = name
+            # Add the original name as an alias if it differs
+            if name != persona_name:
+                aliases.append(name)
 
         # Generate unique ID using both role and persona name to avoid collisions
         # This ensures "admin named John" and "admin named Jane" get different IDs
@@ -209,6 +218,7 @@ class DeterministicExtractor:
             role=role,
             characteristics=[],
             goals=[],
+            aliases=aliases,
         )
 
     def _create_feature(
@@ -245,15 +255,22 @@ class DeterministicExtractor:
         # Generate unique ID
         entity_id = f"feature_{feature_name.lower().replace(' ', '_').replace('-', '_')}"
 
+        # Collect aliases from original name variations
+        aliases: list[str] = []
+        normalized_name = feature_name.title()
+        if feature_name != normalized_name and feature_name.lower() != normalized_name.lower():
+            aliases.append(feature_name)
+
         return FeatureEntity(
             id=entity_id,
-            name=feature_name.title(),
+            name=normalized_name,
             description=f"Feature: {feature_name}",
             source_text=source_text,
             confidence=confidence,
             priority=priority,
             dependencies=[],
             user_stories=[],
+            aliases=aliases,
         )
 
     def _create_technical_constraint(
@@ -286,15 +303,22 @@ class DeterministicExtractor:
         # Generate unique ID
         entity_id = f"technical_constraint_{constraint_type}_{extracted_value}"
 
+        # Collect aliases from constraint type variations
+        aliases: list[str] = []
+        constraint_name = f"{constraint_type.title()} Constraint"
+        if source_text.lower() != constraint_name.lower():
+            aliases.append(source_text)
+
         return TechnicalConstraintEntity(
             id=entity_id,
-            name=f"{constraint_type.title()} Constraint",
+            name=constraint_name,
             description=f"Technical constraint: {source_text}",
             source_text=source_text,
             confidence=confidence,
             constraint_type=constraint_type,
             value=extracted_value,
             unit=unit,
+            aliases=aliases,
         )
 
     def _create_success_metric(
@@ -337,15 +361,22 @@ class DeterministicExtractor:
         metric_name = self._generate_metric_name(source_text)
         entity_id = f"success_metric_{metric_name}"
 
+        # Collect aliases from metric name variations
+        aliases: list[str] = []
+        display_name = metric_name.replace("_", " ").title()
+        if value.lower() != display_name.lower():
+            aliases.append(value)
+
         return SuccessMetricEntity(
             id=entity_id,
-            name=metric_name.replace("_", " ").title(),
+            name=display_name,
             description=f"Success metric: {source_text}",
             source_text=source_text,
             confidence=confidence,
             metric_name=metric_name,
             target_value=target_value or value,
             measurement_method=None,
+            aliases=aliases,
         )
 
     def _determine_priority(self, text: str) -> Optional[str]:

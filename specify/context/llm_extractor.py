@@ -81,6 +81,7 @@ For each entity, provide:
 - Description
 - Original text from prompt
 - Confidence level (high/medium/low)
+- Aliases (alternative names or variations found in the prompt)
 
 Output as JSON following this schema:
 {schema}
@@ -199,7 +200,8 @@ USER PROMPT:
                     "characteristics": ["list of characteristic strings"],
                     "goals": ["list of goal strings"],
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ],
             "features": [
@@ -209,7 +211,8 @@ USER PROMPT:
                     "priority": "string - must/should/could/wont",
                     "dependencies": ["list of dependency feature names"],
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ],
             "technical_constraints": [
@@ -219,7 +222,8 @@ USER PROMPT:
                     "value": "string - constraint value",
                     "unit": "string - unit of measurement (optional)",
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ],
             "success_metrics": [
@@ -229,7 +233,8 @@ USER PROMPT:
                     "target_value": "string - target value",
                     "measurement_method": "string - how to measure",
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ],
             "business_goals": [
@@ -238,7 +243,8 @@ USER PROMPT:
                     "description": "string - goal description",
                     "outcome": "string - business outcome",
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ],
             "integrations": [
@@ -247,7 +253,8 @@ USER PROMPT:
                     "integration_type": "string - api/service/platform/library",
                     "provider": "string - provider name (optional)",
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ],
             "data_entities": [
@@ -256,7 +263,8 @@ USER PROMPT:
                     "attributes": ["list of attribute names"],
                     "relationships": ["list of relationship descriptions"],
                     "source_text": "original text from prompt",
-                    "confidence": "high/medium/low"
+                    "confidence": "high/medium/low",
+                    "aliases": ["list of alternative names found in prompt"]
                 }
             ]
         }
@@ -446,6 +454,13 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            # Filter out any non-string aliases
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return UserPersonaEntity(
                 id=f"user_persona_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -455,6 +470,7 @@ USER PROMPT:
                 role=data.get("role"),
                 characteristics=data.get("characteristics", []),
                 goals=data.get("goals", []),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create UserPersonaEntity: {e}")
@@ -477,6 +493,12 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return FeatureEntity(
                 id=f"feature_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -485,6 +507,7 @@ USER PROMPT:
                 confidence=confidence,
                 priority=data.get("priority"),
                 dependencies=data.get("dependencies", []),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create FeatureEntity: {e}")
@@ -507,6 +530,12 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return TechnicalConstraintEntity(
                 id=f"technical_constraint_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -516,6 +545,7 @@ USER PROMPT:
                 constraint_type=data.get("constraint_type", "other"),
                 value=data.get("value", ""),
                 unit=data.get("unit"),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create TechnicalConstraintEntity: {e}")
@@ -538,6 +568,12 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return SuccessMetricEntity(
                 id=f"success_metric_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -547,6 +583,7 @@ USER PROMPT:
                 metric_name=data.get("metric_name", data["name"]),
                 target_value=data.get("target_value", ""),
                 measurement_method=data.get("measurement_method"),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create SuccessMetricEntity: {e}")
@@ -569,6 +606,12 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return BusinessGoalEntity(
                 id=f"business_goal_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -576,6 +619,7 @@ USER PROMPT:
                 source_text=data.get("source_text", ""),
                 confidence=confidence,
                 outcome=data.get("outcome", ""),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create BusinessGoalEntity: {e}")
@@ -598,6 +642,12 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return IntegrationEntity(
                 id=f"integration_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -606,6 +656,7 @@ USER PROMPT:
                 confidence=confidence,
                 integration_type=data.get("integration_type", "api"),
                 provider=data.get("provider"),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create IntegrationEntity: {e}")
@@ -628,6 +679,12 @@ USER PROMPT:
         try:
             confidence = self._parse_confidence(data.get("confidence", "medium"))
             
+            # Extract aliases from data, ensuring they're valid
+            aliases = data.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            aliases = [str(a).strip() for a in aliases if a and str(a).strip()]
+            
             return DataEntity(
                 id=f"data_entity_{data['name'].lower().replace(' ', '_')}",
                 name=data["name"],
@@ -636,6 +693,7 @@ USER PROMPT:
                 confidence=confidence,
                 attributes=data.get("attributes", []),
                 relationships=data.get("relationships", []),
+                aliases=aliases,
             )
         except Exception as e:
             logger.warning(f"Failed to create DataEntity: {e}")
