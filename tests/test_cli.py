@@ -193,6 +193,39 @@ class TestGenerateCommand:
 
         assert result.exit_code != 0
 
+    def test_generate_no_consistency_check_flag(self, cli_runner: CliRunner) -> None:
+        """Test generate with --no-consistency-check flag."""
+        result = cli_runner.invoke(
+            cli,
+            ["generate", "--prompt", "Build a task app", "--no-consistency-check"],
+        )
+        assert result.exit_code == 0
+
+    def test_generate_auto_fix_flag(self, cli_runner: CliRunner) -> None:
+        """Test generate with --auto-fix flag."""
+        result = cli_runner.invoke(
+            cli,
+            ["generate", "--prompt", "Build a task app", "--auto-fix"],
+        )
+        assert result.exit_code == 0
+
+    def test_generate_both_new_flags(self, cli_runner: CliRunner) -> None:
+        """Test generate with both --no-consistency-check and --auto-fix flags."""
+        result = cli_runner.invoke(
+            cli,
+            ["generate", "--prompt", "Build a task app", "--no-consistency-check", "--auto-fix"],
+        )
+        assert result.exit_code == 0
+
+    def test_generate_help_shows_new_flags(self, cli_runner: CliRunner) -> None:
+        """Test that generate --help shows the new flags."""
+        result = cli_runner.invoke(cli, ["generate", "--help"])
+        assert result.exit_code == 0
+        assert "--no-consistency-check" in result.output
+        assert "--auto-fix" in result.output
+        assert "Skip post-generation consistency check" in result.output
+        assert "Automatically fix inconsistencies" in result.output
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Config Command Tests
