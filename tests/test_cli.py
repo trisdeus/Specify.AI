@@ -194,28 +194,54 @@ class TestGenerateCommand:
         assert result.exit_code != 0
 
     def test_generate_no_consistency_check_flag(self, cli_runner: CliRunner) -> None:
-        """Test generate with --no-consistency-check flag."""
-        result = cli_runner.invoke(
-            cli,
-            ["generate", "--prompt", "Build a task app", "--no-consistency-check"],
-        )
-        assert result.exit_code == 0
+        """Test generate with --no-consistency-check flag skips consistency check."""
+        with mock.patch("specify.cli.consistency_check_loop") as mock_consistency:
+            result = cli_runner.invoke(
+                cli,
+                ["generate", "--prompt", "Build a task app", "--no-consistency-check"],
+            )
+            assert result.exit_code == 0
+            # Verify consistency check was NOT called
+            mock_consistency.assert_not_called()
 
     def test_generate_auto_fix_flag(self, cli_runner: CliRunner) -> None:
-        """Test generate with --auto-fix flag."""
-        result = cli_runner.invoke(
-            cli,
-            ["generate", "--prompt", "Build a task app", "--auto-fix"],
-        )
-        assert result.exit_code == 0
+        """Test generate with --auto-fix flag enables auto-fix mode."""
+        with mock.patch("specify.cli.consistency_check_loop") as mock_consistency:
+            result = cli_runner.invoke(
+                cli,
+                ["generate", "--prompt", "Build a task app", "--auto-fix"],
+            )
+            assert result.exit_code == 0
+            # Verify consistency check was called with auto_fix=True
+            mock_consistency.assert_called_once()
+            call_kwargs = mock_consistency.call_args.kwargs
+            assert call_kwargs.get("auto_fix") is True
 
     def test_generate_both_new_flags(self, cli_runner: CliRunner) -> None:
         """Test generate with both --no-consistency-check and --auto-fix flags."""
-        result = cli_runner.invoke(
-            cli,
-            ["generate", "--prompt", "Build a task app", "--no-consistency-check", "--auto-fix"],
-        )
-        assert result.exit_code == 0
+        with mock.patch("specify.cli.consistency_check_loop") as mock_consistency:
+            result = cli_runner.invoke(
+                cli,
+                ["generate", "--prompt", "Build a task app", "--no-consistency-check", "--auto-fix"],
+            )
+            assert result.exit_code == 0
+            # When --no-consistency-check is set, consistency check should be skipped
+            # even if --auto-fix is also provided
+            mock_consistency.assert_not_called()
+
+    def test_generate_default_calls_consistency_check(self, cli_runner: CliRunner) -> None:
+        """Test generate without flags calls consistency check by default."""
+        with mock.patch("specify.cli.consistency_check_loop") as mock_consistency:
+            result = cli_runner.invoke(
+                cli,
+                ["generate", "--prompt", "Build a task app"],
+            )
+            assert result.exit_code == 0
+            # Verify consistency check WAS called (default behavior)
+            mock_consistency.assert_called_once()
+            # Verify auto_fix is False by default
+            call_kwargs = mock_consistency.call_args.kwargs
+            assert call_kwargs.get("auto_fix") is False
 
     def test_generate_help_shows_new_flags(self, cli_runner: CliRunner) -> None:
         """Test that generate --help shows the new flags."""
