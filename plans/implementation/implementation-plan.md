@@ -79,11 +79,12 @@ Specify.AI is a local-first, open-source CLI tool that transforms a single user 
 
 **Epic: Core Infrastructure**
 
-| ID     | User Story                                                                                                                     | Acceptance Criteria                                                                                                                                                                                    | Priority |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
-| US-001 | As a user, I want to securely store my API keys so that I can authenticate with LLM providers without entering them each time. | **Given** I have an API key for a provider, **When** I run the store-key command, **Then** the key is encrypted and saved to a local file. **And** the key can be retrieved for subsequent operations. | Must     |
-| US-002 | As a user, I want to list my stored API keys so that I can verify which providers are configured.                              | **Given** I have stored API keys, **When** I run the list-keys command, **Then** I see a list of configured providers with masked keys (e.g., `sk-...abc`).                                            | Must     |
-| US-003 | As a user, I want to delete a stored API key so that I can remove providers I no longer use.                                   | **Given** I have a stored API key, **When** I run the delete-key command, **Then** the key is removed from storage. **And** subsequent operations fail with a clear error message.                     | Must     |
+| ID     | User Story                                                                                                                                               | Acceptance Criteria                                                                                                                                                                                                                                                                                                                       | Priority |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| US-001 | As a user, I want to be guided through an interactive onboarding process when no API keys are configured, so that I can easily set up my first provider. | **Given** no API keys are stored, **When** I start the CLI, **Then** I am prompted to select a provider from a list. **And** I can select a model from a dynamically-fetched list or enter a custom model. **And** I can enter my base URL for Ollama or API key for OpenAI/Anthropic. **And** the configuration is saved for future use. | Must     |
+| US-002 | As a user, I want to list my stored API keys so that I can verify which providers are configured.                                                        | **Given** I have stored API keys, **When** I run the list-keys command, **Then** I see a list of configured providers with masked keys (e.g., `sk-...abc`).                                                                                                                                                                               | Must     |
+| US-003 | As a user, I want to interactively delete a stored API key so that I can remove providers I no longer use.                                               | **Given** I have stored API keys, **When** I run the delete-key command without arguments, **Then** I see an interactive list of stored keys to select from. **And** the selected key is removed from storage. **And** the --provider flag still works for non-interactive mode.                                                          | Must     |
+| US-016 | As a user, I want to add additional providers after initial setup so that I can use multiple LLM providers.                                              | **Given** I have at least one provider configured, **When** I run the setup command, **Then** I am guided through the same interactive flow to add another provider. **And** the new provider is added to my existing configuration.                                                                                                      | Must     |
 
 **Epic: Document Generation**
 
@@ -98,11 +99,12 @@ Specify.AI is a local-first, open-source CLI tool that transforms a single user 
 
 **Epic: Quality & Consistency**
 
-| ID     | User Story                                                                                                     | Acceptance Criteria                                                                                                                                                                                                                 | Priority |
-| ------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| US-010 | As a user, I want to receive recommendations for missing information so that my documents are more complete.   | **Given** my prompt is missing critical information, **When** I run the generate command, **Then** the system identifies gaps and outputs up to 5 clarifying questions. **And** I can answer these questions to improve the output. | Should   |
-| US-011 | As a user, I want to check consistency between generated documents so that I can identify conflicts.           | **Given** I have generated multiple documents, **When** I run the consistency-check command, **Then** the system analyzes all documents for conflicts. **And** a report is generated listing inconsistencies by severity.           | Should   |
-| US-012 | As a user, I want automatic inconsistency fixing so that my documents are aligned without manual intervention. | **Given** inconsistencies are detected, **When** I run the fix-inconsistencies command, **Then** the system attempts to resolve conflicts automatically. **And** a report shows what was changed.                                   | Should   |
+| ID     | User Story                                                                                                                     | Acceptance Criteria                                                                                                                                                                                                                                                                                    | Priority |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| US-010 | As a user, I want to receive recommendations for missing information so that my documents are more complete.                   | **Given** my prompt is missing critical information, **When** I run the generate command, **Then** the system identifies gaps and outputs up to 5 clarifying questions. **And** I can answer these questions to improve the output.                                                                    | Should   |
+| US-011 | As a user, I want to check consistency between generated documents so that I can identify conflicts.                           | **Given** I have generated multiple documents, **When** I run the consistency-check command, **Then** the system analyzes all documents for conflicts. **And** a report is generated listing inconsistencies by severity.                                                                              | Should   |
+| US-012 | As a user, I want automatic inconsistency fixing so that my documents are aligned without manual intervention.                 | **Given** inconsistencies are detected, **When** I run the fix-inconsistencies command, **Then** the system attempts to resolve conflicts automatically. **And** a report shows what was changed.                                                                                                      | Should   |
+| US-017 | As a user, I want to be prompted to check for inconsistencies after document generation so that I can ensure document quality. | **Given** documents have been generated, **When** generation completes, **Then** I am asked if I want to check for inconsistencies. **And** if inconsistencies are found, I am asked if I want them fixed. **And** after fixing, I am asked again if I want to check, creating a loop until I decline. | Must     |
 
 **Epic: Error Handling & Recovery**
 
@@ -155,27 +157,104 @@ Specify.AI is a local-first, open-source CLI tool that transforms a single user 
 **Data Flow Narrative:**
 
 ```
-1. User runs CLI command with prompt and flags
+1. User starts CLI
    ↓
-2. CLI parser validates arguments and loads configuration
+2. System checks if any API keys are configured
    ↓
-3. API key manager retrieves encrypted key for selected provider
+3a. If NO keys configured → Interactive Onboarding Flow:
+     - User selects provider from list: ollama, openai, anthropic
+     - System fetches available models from provider API
+     - User selects model from list OR enters custom model name
+     - User enters base URL (for Ollama) OR API key (for OpenAI/Anthropic)
+     - System stores configuration securely
+     - Main menu appears
    ↓
-4. LLM client initializes with provider-specific SDK
+3b. If keys exist → Main menu appears directly
    ↓
-5. Prompt is enhanced with document-specific rules from plan/rules/
+4. User runs generate command with prompt (interactive or with flags)
    ↓
-6. LLM generates document content (streaming for long outputs)
+5. CLI parser validates arguments and loads configuration
    ↓
-7. Output validator checks document structure and quality
+6. API key manager retrieves encrypted key for selected provider
    ↓
-8. Document is saved to output directory as markdown
+7. LLM client initializes with provider-specific SDK
    ↓
-9. If generating all documents, repeat steps 5-8 for each type
+8. CONTEXT EXTRACTION (NEW):
+     - Context Extractor runs deterministic entity extraction
+     - If ambiguous or missing entities, LLM fallback is used
+     - Entity Normalizer standardizes names and IDs
+     - Shared Context Document is generated
+     - Entity Registry stores all extracted entities
    ↓
-10. Consistency checker analyzes all generated documents (if enabled)
+9. PROMPT ENHANCEMENT WITH SHARED CONTEXT (ENHANCED):
+     - Prompt Template Manager loads document-specific rules
+     - Shared Context is injected into system prompt
+     - Few-shot examples are added (embedded short + separate full)
    ↓
-11. Summary report is displayed to user
+10. LLM generates document content (streaming for long outputs)
+   ↓
+11. Output validator checks document structure and quality
+   ↓
+12. Document is saved to output directory as markdown
+   ↓
+13. If generating all documents, repeat steps 9-12 for each type
+   ↓
+14. POST-GENERATION CONSISTENCY CHECK (ENHANCED):
+     - Consistency Scorer calculates overall score (target: 95%+)
+     - Cross-Document Validator runs validation rules
+     - Report is generated with severity-based issues
+     - If score < 95%:
+       - Auto-Fix Engine attempts to resolve issues
+       - Re-score after fixes
+     - User can opt-out with --no-consistency-check flag
+   ↓
+15. Summary report is displayed to user
+```
+
+**Interactive Onboarding Flow Diagram:**
+
+```mermaid
+flowchart TD
+    A[User starts CLI] --> B{Any keys configured?}
+    B -->|No| C[Start Interactive Onboarding]
+    B -->|Yes| D[Show Main Menu]
+
+    C --> E[Display provider list]
+    E --> F[User selects provider]
+    F --> G[Fetch available models from API]
+    G --> H[Display model list]
+    H --> I{User selection}
+    I -->|Select from list| J[Store model selection]
+    I -->|Enter custom| K[Validate custom model]
+    K --> J
+
+    J --> L{Provider type?}
+    L -->|Ollama| M[Prompt for base URL]
+    L -->|OpenAI/Anthropic| N[Prompt for API key]
+    M --> O[Store configuration]
+    N --> O
+
+    O --> D
+```
+
+**Post-Generation Consistency Check Loop Diagram:**
+
+```mermaid
+flowchart TD
+    A[Documents Generated] --> B{Check for inconsistencies?}
+    B -->|No| C[Show Summary Report]
+    B -->|Yes| D[Run Consistency Checker]
+
+    D --> E{Inconsistencies found?}
+    E -->|No| F[Display: All documents consistent]
+    F --> C
+
+    E -->|Yes| G[Display inconsistency report]
+    G --> H{Fix inconsistencies?}
+    H -->|No| C
+    H -->|Yes| I[Apply automatic fixes]
+    I --> J[Display changes made]
+    J --> B
 ```
 
 **Architecture Diagram:**
@@ -197,6 +276,19 @@ Specify.AI is a local-first, open-source CLI tool that transforms a single user 
 │  │                  │ │ Checker          │ │ Engine          │ │
 │  └────────┬─────────┘ └──────────────────┘ └─────────────────┘ │
 └───────────┼─────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Context Layer (NEW)                           │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌─────────────────┐ │
+│  │ Context          │ │ Entity           │ │ Shared Context  │ │
+│  │ Extractor        │ │ Normalizer       │ │ Document        │ │
+│  └──────────────────┘ └──────────────────┘ └─────────────────┘ │
+│  ┌──────────────────┐ ┌──────────────────┐                     │
+│  │ Entity Registry  │ │ Prompt Template  │                     │
+│  │                  │ │ Manager          │                     │
+│  └──────────────────┘ └──────────────────┘                     │
+└─────────────────────────────────────────────────────────────────┘
             │
             ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -239,6 +331,8 @@ Specify.AI is a local-first, open-source CLI tool that transforms a single user 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+> **📋 See [Consistency Enhancement Plan](consistency-enhancement-plan.md) for detailed design of the Context Layer and consistency scoring system.**
+
 ---
 
 ### PHASE 3: IMPLEMENTATION ROADMAP
@@ -256,20 +350,20 @@ Specify.AI is a local-first, open-source CLI tool that transforms a single user 
 
 #### 3.2 Sprint Breakdown
 
-| Sprint | Duration | Goals                                     | Stories Included                  |
-| ------ | -------- | ----------------------------------------- | --------------------------------- |
-| S1     | Week 1   | Project setup, CLI scaffold, CI/CD        | Infrastructure setup              |
-| S2     | Week 2   | API key storage, encryption               | US-001, US-002, US-003            |
-| S3     | Week 3   | LLM abstraction layer, Ollama integration | Provider interface, Ollama client |
-| S4     | Week 4   | App Flow Generator                        | US-004                            |
-| S5     | Week 5   | BDD Generator, PRD Generator              | US-005, US-007                    |
-| S6     | Week 6   | Design Doc Generator, Tech Arch Generator | US-006, US-008                    |
-| S7     | Week 7   | Generate all documents, output management | US-009                            |
-| S8     | Week 8   | OpenAI integration, Anthropic integration | Provider clients                  |
-| S9     | Week 9   | Consistency checker, recommendations      | US-010, US-011, US-012            |
-| S10    | Week 10  | Error handling, retry logic, logging      | US-013, US-014, US-015            |
-| S11    | Week 11  | Test coverage, documentation, polish      | Quality assurance                 |
-| S12    | Week 12  | UAT, bug fixes, release                   | Final release                     |
+| Sprint | Duration | Goals                                                       | Stories Included                  |
+| ------ | -------- | ----------------------------------------------------------- | --------------------------------- |
+| S1     | Week 1   | Project setup, CLI scaffold, CI/CD                          | Infrastructure setup              |
+| S2     | Week 2   | Interactive onboarding, API key storage, encryption         | US-001, US-002, US-003, US-016    |
+| S3     | Week 3   | LLM abstraction layer, Ollama integration, model fetching   | Provider interface, Ollama client |
+| S4     | Week 4   | App Flow Generator                                          | US-004                            |
+| S5     | Week 5   | BDD Generator, PRD Generator                                | US-005, US-007                    |
+| S6     | Week 6   | Design Doc Generator, Tech Arch Generator                   | US-006, US-008                    |
+| S7     | Week 7   | Generate all documents, output management, consistency loop | US-009, US-017                    |
+| S8     | Week 8   | OpenAI integration, Anthropic integration                   | Provider clients                  |
+| S9     | Week 9   | Consistency checker, recommendations                        | US-010, US-011, US-012            |
+| S10    | Week 10  | Error handling, retry logic, logging                        | US-013, US-014, US-015            |
+| S11    | Week 11  | Test coverage, documentation, polish                        | Quality assurance                 |
+| S12    | Week 12  | UAT, bug fixes, release                                     | Final release                     |
 
 ---
 
@@ -452,6 +546,16 @@ specify_ai/
 │   │   ├── key_manager.py  # API key storage/encryption
 │   │   └── output.py       # File output handling
 │   │
+│   ├── context/            # NEW: Context extraction module
+│   │   ├── __init__.py
+│   │   ├── extractor.py    # HybridContextExtractor
+│   │   ├── deterministic.py # DeterministicExtractor (pattern-based)
+│   │   ├── llm_extractor.py # LLMEntityExtractor (fallback)
+│   │   ├── normalizer.py   # EntityNormalizer
+│   │   ├── registry.py     # EntityRegistry
+│   │   ├── shared_context.py # SharedContextDocument
+│   │   └── models.py       # Entity Pydantic models
+│   │
 │   ├── providers/          # LLM provider clients
 │   │   ├── __init__.py
 │   │   ├── base.py         # Abstract provider interface
@@ -468,6 +572,10 @@ specify_ai/
 │   │   ├── prd.py          # PRD generator
 │   │   └── tech_arch.py    # Technical Architecture generator
 │   │
+│   ├── prompts/            # NEW: Prompt management
+│   │   ├── __init__.py
+│   │   └── templates.py    # PromptTemplateManager
+│   │
 │   ├── rules/              # Document rules (copied from plan/rules/)
 │   │   ├── __init__.py
 │   │   ├── app_flow.py
@@ -479,6 +587,10 @@ specify_ai/
 │   ├── analysis/           # Consistency and recommendations
 │   │   ├── __init__.py
 │   │   ├── consistency.py  # Cross-document consistency checker
+│   │   ├── validator.py    # NEW: CrossDocumentValidator
+│   │   ├── validation_rules.py # NEW: Validation rules
+│   │   ├── scorer.py       # NEW: ConsistencyScorer
+│   │   ├── report.py       # NEW: ConsistencyReport
 │   │   └── recommendations.py  # Missing info recommendations
 │   │
 │   └── utils/              # Shared utilities
@@ -487,6 +599,21 @@ specify_ai/
 │       ├── validation.py   # Input validation helpers
 │       └── retry.py        # Retry logic with backoff
 │
+├── plans/                  # Planning documents
+│   ├── rules/              # Document generation rules
+│   │   ├── app-flow-doc.md
+│   │   ├── bdd.md
+│   │   ├── design-doc.md
+│   │   ├── prd.md
+│   │   └── technical-architecture-doc.md
+│   │
+│   └── examples/           # NEW: Few-shot examples
+│       ├── app-flow/
+│       ├── bdd/
+│       ├── design-doc/
+│       ├── prd/
+│       └── tech-arch/
+│
 ├── tests/                  # Test suite
 │   ├── __init__.py
 │   ├── conftest.py         # Pytest fixtures
@@ -494,6 +621,7 @@ specify_ai/
 │   ├── test_key_manager.py
 │   ├── test_providers/
 │   ├── test_generators/
+│   ├── test_context/       # NEW: Context module tests
 │   └── test_analysis/
 │
 ├── docs/                   # Documentation
@@ -514,16 +642,158 @@ specify_ai/
 
 ## APPENDIX B: CLI Command Reference
 
-### Commands
+### Interactive Mode (Default)
+
+When no API keys are configured, the CLI automatically starts interactive onboarding:
 
 ```bash
-# Store an API key
+# Start CLI - triggers onboarding if no keys configured
+$ specify
+
+Welcome to Specify.AI!
+No API keys configured. Let's set up your first provider.
+
+Select a provider:
+  1. Ollama (local)
+  2. OpenAI
+  3. Anthropic
+
+Enter choice [1-3]: 1
+
+Fetching available models from Ollama...
+Available models:
+  1. llama3
+  2. mistral
+  3. codellama
+  4. Enter custom model name
+
+Select a model [1-4]: 1
+
+Enter Ollama base URL [default: http://localhost:11434]:
+
+Configuration saved successfully!
+
+Main Menu:
+  1. Generate documents
+  2. Add another provider
+  3. List configured providers
+  4. Delete a provider
+  5. Exit
+
+Enter choice:
+```
+
+### Setup Command (Add Providers)
+
+```bash
+# Add a new provider interactively
+$ specify setup
+
+Select a provider:
+  1. Ollama (local)
+  2. OpenAI
+  3. Anthropic
+
+Enter choice [1-3]: 2
+
+Fetching available models from OpenAI...
+Available models:
+  1. gpt-4
+  2. gpt-4-turbo
+  3. gpt-3.5-turbo
+  4. Enter custom model name
+
+Select a model [1-4]: 1
+
+Enter your OpenAI API key: sk-...
+
+Configuration saved successfully!
+```
+
+### Interactive Key Deletion
+
+```bash
+# Delete a key interactively (no --provider flag needed)
+$ specify config delete-key
+
+Configured providers:
+  1. ollama (sk-...34)
+  2. openai (sk-...abc)
+
+Select provider to delete [1-2, or q to quit]: 2
+
+Are you sure you want to delete the key for openai? [y/N]: y
+API key deleted for openai
+```
+
+### Non-Interactive Mode (CI/CD)
+
+All commands support flags for non-interactive/automation use:
+
+```bash
+# Store an API key (non-interactive)
 specify config set-key --provider ollama --key "your-key-or-url"
+
+# Delete a stored key (non-interactive)
+specify config delete-key --provider ollama
+
+# Generate documents (non-interactive)
+specify generate --prompt "Build a task management app" --type all --provider ollama --model llama3
+
+# Skip post-generation consistency check prompt
+specify generate --prompt "..." --type all --no-consistency-check
+
+# Auto-fix inconsistencies without prompting
+specify generate --prompt "..." --type all --auto-fix
+```
+
+### Document Generation with Consistency Check Loop
+
+After generation, the system prompts for consistency checking:
+
+```bash
+$ specify generate --prompt "Build a task app" --type all
+
+Generating 5 documents...
+✓ App Flow Document generated
+✓ Backend Design Document generated
+✓ Design Document generated
+✓ PRD generated
+✓ Technical Architecture Document generated
+
+Would you like to check for inconsistencies? [Y/n]: y
+
+Checking consistency...
+Found 3 inconsistencies:
+  [HIGH] PRD mentions "user authentication" but Tech Arch does not
+  [MEDIUM] App Flow shows 5 screens, BDD shows 4 screens
+  [LOW] Design Doc uses different color palette than PRD
+
+Would you like to fix these inconsistencies? [Y/n]: y
+
+Fixing inconsistencies...
+✓ Updated Technical Architecture Document
+✓ Updated Backend Design Document
+✓ Updated Design Document
+
+Would you like to check for inconsistencies again? [Y/n]: n
+
+Summary: 5 documents generated, 3 inconsistencies fixed.
+```
+
+### All Commands Reference
+
+```bash
+# Interactive setup (or add provider)
+specify setup
 
 # List stored providers
 specify config list-keys
 
-# Delete a stored key
+# Delete a key (interactive)
+specify config delete-key
+
+# Delete a key (non-interactive)
 specify config delete-key --provider ollama
 
 # Generate a single document
@@ -551,15 +821,17 @@ specify generate --help
 
 ### Flags
 
-| Flag                   | Short | Description                                                   | Default          |
-| ---------------------- | ----- | ------------------------------------------------------------- | ---------------- |
-| `--prompt`             | `-p`  | Product description prompt                                    | Required         |
-| `--type`               | `-t`  | Document type: app-flow, bdd, design-doc, prd, tech-arch, all | Required         |
-| `--provider`           | None  | LLM provider: ollama, openai, anthropic                       | ollama           |
-| `--output`             | `-o`  | Output directory                                              | ./output         |
-| `--model`              | `-m`  | Specific model to use                                         | Provider default |
-| `--verbose`            | `-v`  | Enable verbose logging                                        | False            |
-| `--no-recommendations` | None  | Skip clarification questions                                  | False            |
+| Flag                     | Short | Description                                                   | Default     |
+| ------------------------ | ----- | ------------------------------------------------------------- | ----------- |
+| `--prompt`               | `-p`  | Product description prompt                                    | Required    |
+| `--type`                 | `-t`  | Document type: app-flow, bdd, design-doc, prd, tech-arch, all | all         |
+| `--provider`             | None  | LLM provider: ollama, openai, anthropic                       | From config |
+| `--model`                | `-m`  | Specific model to use                                         | From config |
+| `--output`               | `-o`  | Output directory                                              | ./output    |
+| `--verbose`              | `-v`  | Enable verbose logging                                        | False       |
+| `--no-recommendations`   | None  | Skip clarification questions                                  | False       |
+| `--no-consistency-check` | None  | Skip post-generation consistency check prompt                 | False       |
+| `--auto-fix`             | None  | Automatically fix inconsistencies without prompting           | False       |
 
 ---
 

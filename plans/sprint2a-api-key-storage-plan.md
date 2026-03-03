@@ -59,20 +59,74 @@ classDiagram
 
 ```
 ~/.specify/
-└── keys.json    # JSON file storing API keys
+├── keys.json       # JSON file storing API keys and models
+└── config.json     # Optional: additional configuration
 ```
 
-### 3. keys.json Format
+### 3. keys.json Format (Updated)
+
+The keys.json format now includes model selection for each provider:
 
 ```json
 {
-  "openai": "sk-proj-abc123...",
-  "anthropic": "sk-ant-xyz789...",
-  "ollama": "http://localhost:11434"
+  "openai": {
+    "api_key": "sk-proj-abc123...",
+    "model": "gpt-4",
+    "base_url": null
+  },
+  "anthropic": {
+    "api_key": "sk-ant-xyz789...",
+    "model": "claude-3-opus-20240229",
+    "base_url": null
+  },
+  "ollama": {
+    "api_key": null,
+    "model": "llama3",
+    "base_url": "http://localhost:11434"
+  }
 }
 ```
 
-### 4. Method Specifications
+**Note**: For backward compatibility, the KeyManager should handle both the old format (simple string values) and the new format (object with model info).
+
+### 4. KeyManager Class Design (Updated)
+
+```mermaid
+classDiagram
+    class KeyManager {
+        -Path config_dir
+        -Path keys_file
+        +__init__(config_dir: Path | None)
+        +store_key(provider: str, key: str, model: str | None, base_url: str | None) -> None
+        +get_key(provider: str) -> str | None
+        +get_model(provider: str) -> str | None
+        +get_base_url(provider: str) -> str | None
+        +get_provider_config(provider: str) -> dict | None
+        +list_keys() -> dict[str, str]
+        +list_providers() -> list[str]
+        +delete_key(provider: str) -> bool
+        +key_exists(provider: str) -> bool
+        +any_keys_configured() -> bool
+        -_mask_key(key: str) -> str
+        -_load_keys() -> dict[str, str]
+        -_save_keys(keys: dict[str, str]) -> None
+        -_ensure_config_dir() -> None
+        -_migrate_old_format(keys: dict) -> dict
+    }
+
+    class KeyValidationError {
+        +message: str
+    }
+
+    class KeyNotFoundError {
+        +provider: str
+    }
+
+    KeyManager ..> KeyValidationError : raises
+    KeyManager ..> KeyNotFoundError : raises
+```
+
+### 5. Method Specifications
 
 #### `__init__(self, config_dir: Path | None = None)`
 
@@ -197,18 +251,91 @@ class KeyNotFoundError(Exception):
 
 ## CLI Integration
 
-### Update `set_key` command
+### New `setup` Command (Interactive Onboarding)
+
+The `setup` command provides an interactive flow for configuring providers:
+
+```python
+@cli.command()
+def setup() -> None:
+    """Interactively configure a provider."""
+    key_manager = KeyManager()
+
+    # Provider selection
+    providers = ["ollama", "openai", "anthropic"]
+    click.echo("Select a provider:")
+    for i, provider in enumerate(providers, 1):
+        click.echo(f"  {i}. {provider}")
+
+    choice = click.prompt("Enter choice", type=click.IntRange(1, len(providers)))
+    provider = providers[choice - 1]
+
+    # Model selection - fetch from provider API
+    models = fetch_models_for_provider(provider)  # Provider-specific implementation
+    click.echo("Available models:")
+    for i, model in enumerate(models, 1):
+        click.echo(f"  {i}. {model}")
+    click.echo(f"  {len(models) + 1}. Enter custom model name")
+
+    model_choice = click.prompt("Select a model", type=click.IntRange(1, len(models) + 1))
+    if model_choice == len(models) + 1:
+        model = click.prompt("Enter model name")
+    else:
+        model = models[model_choice - 1]
+
+    # Credential entry
+    if provider == "ollama":
+        base_url = click.prompt(
+            "Enter Ollama base URL",
+            default="http://localhost:11434"
+        )
+        key_manager.store_key(provider, key=None, model=model, base_url=base_url)
+    else:
+        api_key = click.prompt(f"Enter your {provider} API key", hide_input=True)
+        key_manager.store_key(provider, key=api_key, model=model, base_url=None)
+
+    click.echo(f"[OK] Configuration saved for {provider}")
+```
+
+### Automatic Onboarding Check
+
+Add a check at CLI startup to trigger onboarding if no keys are configured:
+
+```python
+@cli.group()
+@click.pass_context
+def cli(ctx: click.Context) -> None:
+    """Specify.AI - Generate documentation from AI."""
+    ctx.ensure_object(dict)
+
+    # Check if onboarding is needed
+    key_manager = KeyManager()
+    if not key_manager.any_keys_configured():
+        click.echo("Welcome to Specify.AI!")
+        click.echo("No API keys configured. Let's set up your first provider.")
+        ctx.invoke(setup)
+```
+
+### Update `set_key` command (Non-Interactive Mode)
 
 ```python
 @config.command(name="set-key")
-@click.option("--provider", "-p", required=True, ...)
-@click.option("--key", "-k", required=True, ...)
-def set_key(provider: str, key: str) -> None:
-    """Store an API key for a provider."""
+@click.option("--provider", "-p", required=False, ...)
+@click.option("--key", "-k", required=False, ...)
+@click.option("--model", "-m", required=False, ...)
+@click.option("--base-url", required=False, ...)
+def set_key(provider: str | None, key: str | None, model: str | None, base_url: str | None) -> None:
+    """Store an API key for a provider (non-interactive mode)."""
+    # If no provider specified, launch interactive mode
+    if provider is None:
+        ctx = click.get_current_context()
+        ctx.invoke(setup)
+        return
+
     try:
         key_manager = KeyManager()
-        key_manager.store_key(provider, key)
-        click.echo(f"✓ API key stored for {provider}")
+        key_manager.store_key(provider, key, model, base_url)
+        click.echo(f"[OK] Configuration saved for {provider}")
     except KeyValidationError as e:
         raise click.ClickException(str(e))
 ```
@@ -220,32 +347,67 @@ def set_key(provider: str, key: str) -> None:
 def list_keys() -> None:
     """List all configured providers."""
     key_manager = KeyManager()
-    keys = key_manager.list_keys()
+    providers = key_manager.list_providers()
 
-    if not keys:
+    if not providers:
         click.echo("No API keys configured.")
         return
 
-    # Print formatted table
-    click.echo("Configured API Keys:")
-    click.echo("-" * 40)
-    for provider, masked_key in keys.items():
-        click.echo(f"  {provider}: {masked_key}")
+    # Print formatted table with model info
+    click.echo("Configured Providers:")
+    click.echo("-" * 60)
+    for provider in providers:
+        config = key_manager.get_provider_config(provider)
+        masked_key = key_manager._mask_key(config.get("api_key", "")) if config.get("api_key") else "N/A"
+        model = config.get("model", "default")
+        click.echo(f"  {provider}:")
+        click.echo(f"    Model: {model}")
+        if config.get("base_url"):
+            click.echo(f"    Base URL: {config['base_url']}")
+        else:
+            click.echo(f"    API Key: {masked_key}")
 ```
 
-### Update `delete_key` command
+### Update `delete_key` command (Interactive Selection)
 
 ```python
 @config.command(name="delete-key")
-@click.option("--provider", "-p", required=True, ...)
-def delete_key(provider: str) -> None:
-    """Delete a stored API key."""
+@click.option("--provider", "-p", required=False, ...)
+def delete_key(provider: str | None) -> None:
+    """Delete a stored API key (interactive or with --provider flag)."""
     key_manager = KeyManager()
+    providers = key_manager.list_providers()
 
-    if not key_manager.delete_key(provider):
-        raise click.ClickException(f"No key found for provider: {provider}")
+    if not providers:
+        click.echo("No API keys configured.")
+        return
 
-    click.echo(f"✓ API key deleted for {provider}")
+    # If no provider specified, show interactive selection
+    if provider is None:
+        click.echo("Configured providers:")
+        for i, p in enumerate(providers, 1):
+            click.echo(f"  {i}. {p}")
+        click.echo("  q. Quit")
+
+        choice = click.prompt("Select provider to delete", default="q")
+        if choice.lower() == "q":
+            return
+
+        try:
+            provider = providers[int(choice) - 1]
+        except (ValueError, IndexError):
+            raise click.ClickException("Invalid selection")
+
+    # Confirm deletion
+    if not click.confirm(f"Are you sure you want to delete the key for {provider}?"):
+        click.echo("Cancelled.")
+        return
+
+    try:
+        key_manager.delete_key(provider)
+        click.echo(f"[OK] API key deleted for {provider}")
+    except KeyNotFoundError as e:
+        raise click.ClickException(str(e))
 ```
 
 ---
@@ -254,33 +416,46 @@ def delete_key(provider: str) -> None:
 
 ### Unit Tests for KeyManager
 
-| Test ID | Description                | Setup            | Action                              | Expected Result                  |
-| ------- | -------------------------- | ---------------- | ----------------------------------- | -------------------------------- |
-| UT-01   | Store key for new provider | Fresh KeyManager | `store_key("openai", "sk-test123")` | Key saved, no error              |
-| UT-02   | Retrieve stored key        | Store key first  | `get_key("openai")`                 | Returns "sk-test123"             |
-| UT-03   | List stored keys           | Store 2 keys     | `list_keys()`                       | Dict with 2 entries, keys masked |
-| UT-04   | Delete stored key          | Store key first  | `delete_key("openai")`              | Returns True, key removed        |
-| UT-05   | Overwrite existing key     | Store key twice  | Store, store again                  | Second key replaces first        |
-| UT-06   | Get non-existent key       | Fresh KeyManager | `get_key("nonexistent")`            | Returns None                     |
-| UT-07   | List when no keys          | Fresh KeyManager | `list_keys()`                       | Returns empty dict               |
-| UT-08   | Delete non-existent key    | Fresh KeyManager | `delete_key("nonexistent")`         | Returns False                    |
-| UT-09   | Mask short key             | Key "abc"        | `_mask_key("abc")`                  | Returns "\*\*\*"                 |
-| UT-10   | Mask normal key            | Key "sk-test123" | `_mask_key("sk-test123")`           | Returns "sk-...123"              |
-| UT-11   | Store empty key            | Fresh KeyManager | `store_key("openai", "")`           | Raises KeyValidationError        |
-| UT-12   | Store invalid provider     | Fresh KeyManager | `store_key("invalid", "key")`       | Raises KeyValidationError        |
-| UT-13   | Custom config directory    | Pass custom dir  | Store and retrieve                  | Works with custom dir            |
-| UT-14   | Corrupted JSON file        | Create bad JSON  | `list_keys()`                       | Raises appropriate error         |
+| Test ID | Description                  | Setup            | Action                                          | Expected Result                  |
+| ------- | ---------------------------- | ---------------- | ----------------------------------------------- | -------------------------------- |
+| UT-01   | Store key for new provider   | Fresh KeyManager | `store_key("openai", "sk-test123")`             | Key saved, no error              |
+| UT-02   | Retrieve stored key          | Store key first  | `get_key("openai")`                             | Returns "sk-test123"             |
+| UT-03   | List stored keys             | Store 2 keys     | `list_keys()`                                   | Dict with 2 entries, keys masked |
+| UT-04   | Delete stored key            | Store key first  | `delete_key("openai")`                          | Returns True, key removed        |
+| UT-05   | Overwrite existing key       | Store key twice  | Store, store again                              | Second key replaces first        |
+| UT-06   | Get non-existent key         | Fresh KeyManager | `get_key("nonexistent")`                        | Returns None                     |
+| UT-07   | List when no keys            | Fresh KeyManager | `list_keys()`                                   | Returns empty dict               |
+| UT-08   | Delete non-existent key      | Fresh KeyManager | `delete_key("nonexistent")`                     | Returns False                    |
+| UT-09   | Mask short key               | Key "abc"        | `_mask_key("abc")`                              | Returns "\*\*\*"                 |
+| UT-10   | Mask normal key              | Key "sk-test123" | `_mask_key("sk-test123")`                       | Returns "sk-...123"              |
+| UT-11   | Store empty key              | Fresh KeyManager | `store_key("openai", "")`                       | Raises KeyValidationError        |
+| UT-12   | Store invalid provider       | Fresh KeyManager | `store_key("invalid", "key")`                   | Raises KeyValidationError        |
+| UT-13   | Custom config directory      | Pass custom dir  | Store and retrieve                              | Works with custom dir            |
+| UT-14   | Corrupted JSON file          | Create bad JSON  | `list_keys()`                                   | Raises appropriate error         |
+| UT-15   | Store key with model         | Fresh KeyManager | `store_key("openai", "sk-test", model="gpt-4")` | Key and model saved              |
+| UT-16   | Get model for provider       | Store with model | `get_model("openai")`                           | Returns "gpt-4"                  |
+| UT-17   | Get base URL for Ollama      | Store Ollama     | `get_base_url("ollama")`                        | Returns URL                      |
+| UT-18   | Get full provider config     | Store with model | `get_provider_config("openai")`                 | Returns dict with key and model  |
+| UT-19   | Check if any keys configured | Fresh KeyManager | `any_keys_configured()`                         | Returns False                    |
+| UT-20   | Check if any keys configured | Store one key    | `any_keys_configured()`                         | Returns True                     |
+| UT-21   | Migrate old format to new    | Old format JSON  | `_migrate_old_format(keys)`                     | Returns new format dict          |
+| UT-22   | List providers               | Store 2 keys     | `list_providers()`                              | Returns list of provider names   |
 
 ### CLI Integration Tests
 
-| Test ID | Description                | Command                                       | Expected Output                            |
-| ------- | -------------------------- | --------------------------------------------- | ------------------------------------------ |
-| CT-01   | Set key success            | `specify config set-key -p openai -k sk-test` | "✓ API key stored for openai"              |
-| CT-02   | Set key with empty key     | `specify config set-key -p openai -k ""`      | Error message                              |
-| CT-03   | List keys with keys stored | Store key, then list                          | Shows provider with masked key             |
-| CT-04   | List keys with no keys     | Fresh install                                 | "No API keys configured."                  |
-| CT-05   | Delete key success         | Store key, then delete                        | "✓ API key deleted for openai"             |
-| CT-06   | Delete non-existent key    | `specify config delete-key -p openai`         | Error: "No key found for provider: openai" |
+| Test ID | Description                          | Command                                               | Expected Output                            |
+| ------- | ------------------------------------ | ----------------------------------------------------- | ------------------------------------------ |
+| CT-01   | Set key success (non-interactive)    | `specify config set-key -p openai -k sk-test`         | "[OK] Configuration saved for openai"      |
+| CT-02   | Set key with empty key               | `specify config set-key -p openai -k ""`              | Error message                              |
+| CT-03   | List keys with keys stored           | Store key, then list                                  | Shows provider with model and masked key   |
+| CT-04   | List keys with no keys               | Fresh install                                         | "No API keys configured."                  |
+| CT-05   | Delete key success (non-interactive) | Store key, then `specify config delete-key -p openai` | "[OK] API key deleted for openai"          |
+| CT-06   | Delete non-existent key              | `specify config delete-key -p openai`                 | Error: "No key found for provider: openai" |
+| CT-07   | Interactive setup command            | `specify setup` with mock inputs                      | Provider configured successfully           |
+| CT-08   | Interactive delete without flag      | Store keys, run `specify config delete-key`           | Shows menu, deletes selected key           |
+| CT-09   | Auto-onboarding on first run         | Fresh install, run `specify`                          | Triggers setup flow automatically          |
+| CT-10   | Set key with model                   | `specify config set-key -p openai -k sk -m gpt-4`     | Key and model saved                        |
+| CT-11   | Skip onboarding with flag            | `specify --skip-onboarding`                           | No onboarding triggered                    |
 
 ---
 
