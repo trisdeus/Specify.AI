@@ -85,7 +85,7 @@ class TestJSONResponseParsing:
                     "role": "Admin",
                     "description": "System admin",
                     "source_text": "Admin users",
-                    "confidence": "high",
+                    "confidence": 0.9,
                 }
             ],
             "features": [],
@@ -113,7 +113,7 @@ class TestJSONResponseParsing:
                     "name": "User Authentication",
                     "description": "Login system",
                     "source_text": "Auth",
-                    "confidence": "high",
+                    "confidence": 0.9,
                     "priority": "must",
                 }
             ],
@@ -151,7 +151,7 @@ class TestMarkdownCodeBlockHandling:
             "role": "Dev",
             "description": "Developer user",
             "source_text": "Dev users",
-            "confidence": "high"
+            "confidence": 0.9
         }
     ],
     "features": [],
@@ -181,7 +181,7 @@ class TestMarkdownCodeBlockHandling:
                     "role": "Manager",
                     "description": "Project manager",
                     "source_text": "Managers",
-                    "confidence": "medium"
+                    "confidence": 0.6
                 }
             ],
             "features": [],
@@ -290,7 +290,7 @@ class TestEntityExtraction:
                     "role": "Administrator",
                     "description": "System administrator",
                     "source_text": "Admin users manage the system",
-                    "confidence": "high",
+                    "confidence": 0.9,
                     "characteristics": ["Technical", "Security conscious"],
                     "goals": ["Manage users", "Configure settings"],
                 },
@@ -299,7 +299,7 @@ class TestEntityExtraction:
                     "role": "User",
                     "description": "Standard user",
                     "source_text": "Regular users access the app",
-                    "confidence": "medium",
+                    "confidence": 0.6,
                 }
             ],
             "features": [],
@@ -330,7 +330,7 @@ class TestEntityExtraction:
                     "name": "User Authentication",
                     "description": "Login and registration",
                     "source_text": "User auth",
-                    "confidence": "high",
+                    "confidence": 0.9,
                     "priority": "must",
                     "dependencies": ["feature_password_reset"],
                 }
@@ -364,7 +364,7 @@ class TestEntityExtraction:
                     "value": "200",
                     "unit": "ms",
                     "source_text": "Response time under 200ms",
-                    "confidence": "high",
+                    "confidence": 0.9,
                 }
             ],
             "success_metrics": [],
@@ -395,7 +395,7 @@ class TestEntityExtraction:
                     "target_value": "2",
                     "measurement_method": "RUM",
                     "source_text": "Pages load in 2 seconds",
-                    "confidence": "medium",
+                    "confidence": 0.6,
                 }
             ],
             "business_goals": [],
@@ -425,7 +425,7 @@ class TestEntityExtraction:
                     "integration_type": "api",
                     "provider": "Stripe",
                     "source_text": "Stripe integration",
-                    "confidence": "high",
+                    "confidence": 0.9,
                 }
             ],
             "data_entities": [],
@@ -454,7 +454,7 @@ class TestEntityExtraction:
                     "attributes": ["order_id", "customer_id", "total"],
                     "relationships": ["belongs_to Customer"],
                     "source_text": "Order entity",
-                    "confidence": "high",
+                    "confidence": 0.9,
                 }
             ],
         })
