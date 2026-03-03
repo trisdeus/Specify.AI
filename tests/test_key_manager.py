@@ -116,12 +116,12 @@ class TestStoreKey:
 
     def test_store_key_empty_key(self, key_manager: KeyManager) -> None:
         """Test that storing an empty key raises error."""
-        with pytest.raises(KeyValidationError, match="cannot be empty"):
+        with pytest.raises(KeyValidationError, match="API key is required"):
             key_manager.store_key("openai", "")
 
     def test_store_key_whitespace_only_key(self, key_manager: KeyManager) -> None:
         """Test that storing a whitespace-only key raises error."""
-        with pytest.raises(KeyValidationError, match="cannot be empty"):
+        with pytest.raises(KeyValidationError, match="API key is required"):
             key_manager.store_key("openai", "   ")
 
 
@@ -373,11 +373,18 @@ class TestKeyManagerIntegration:
 
         assert isinstance(data, dict)
         assert data.get("_encrypted") is True
-        assert data.get("_version") == 2
-        # The actual key should be encrypted (not plain-text)
-        assert data.get("openai") != "sk-test123"
+        assert data.get("_version") == 3
+        # The actual key should be encrypted in nested format
+        assert data.get("openai") is not None
+        assert isinstance(data.get("openai"), dict)
+        # Check nested structure with api_key, base_url, model
+        assert "api_key" in data.get("openai")
+        assert "base_url" in data.get("openai")
+        assert "model" in data.get("openai")
+        # The api_key should be encrypted (not plain-text)
+        assert data.get("openai").get("api_key") != "sk-test123"
         # Encrypted tokens are base64-encoded (starts with 'Z' due to double encoding)
-        assert data.get("openai").startswith("Z")
+        assert data.get("openai").get("api_key").startswith("Z")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -441,3 +448,265 @@ class TestErrorHandling:
         # Should return empty dict, not crash
         keys = km.list_keys()
         assert keys == {}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: any_keys_configured
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestAnyKeysConfigured:
+    """Tests for the any_keys_configured method."""
+
+    def test_no_keys_configured_empty_store(self, key_manager: KeyManager) -> None:
+        """Test returns False when no keys are configured."""
+        assert key_manager.any_keys_configured() is False
+
+    def test_returns_true_with_stored_key(self, key_manager: KeyManager) -> None:
+        """Test returns True when a key is in local store."""
+        key_manager.store_key("openai", "sk-proj-abc123")
+        assert key_manager.any_keys_configured() is True
+
+    def test_returns_true_with_env_var(self, key_manager: KeyManager, monkeypatch) -> None:
+        """Test returns True when key is in environment variable."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env-key-123")
+        assert key_manager.any_keys_configured() is True
+
+    def test_returns_false_with_none_api_key(self, key_manager: KeyManager) -> None:
+        """Test returns False when provider has None api_key (like ollama without key)."""
+        key_manager.store_key("ollama", None)
+        # ollama stored with None key should return False
+        assert key_manager.any_keys_configured() is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: list_providers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestListProviders:
+    """Tests for the list_providers method."""
+
+    def test_empty_store(self, key_manager: KeyManager) -> None:
+        """Test returns empty list when no providers configured."""
+        assert key_manager.list_providers() == []
+
+    def test_single_provider(self, key_manager: KeyManager) -> None:
+        """Test returns list with single provider."""
+        key_manager.store_key("openai", "sk-test")
+        providers = key_manager.list_providers()
+        assert providers == ["openai"]
+
+    def test_multiple_providers_sorted(self, key_manager: KeyManager) -> None:
+        """Test returns sorted list of providers."""
+        key_manager.store_key("anthropic", "sk-ant")
+        key_manager.store_key("openai", "sk-openai")
+        key_manager.store_key("ollama", None)
+
+        providers = key_manager.list_providers()
+        assert providers == ["anthropic", "ollama", "openai"]
+
+    def test_only_local_store_providers(self, key_manager: KeyManager, monkeypatch) -> None:
+        """Test only returns providers from local store, not env vars."""
+        # Set env var but don't store any key locally
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env-key")
+        # list_providers should only return what's in local store
+        assert key_manager.list_providers() == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: get_model
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestGetModel:
+    """Tests for the get_model method."""
+
+    def test_model_set(self, key_manager: KeyManager) -> None:
+        """Test returns model when configured."""
+        key_manager.store_key("openai", "sk-test", model="gpt-4")
+        assert key_manager.get_model("openai") == "gpt-4"
+
+    def test_model_not_set(self, key_manager: KeyManager) -> None:
+        """Test returns None when model not configured."""
+        key_manager.store_key("openai", "sk-test")
+        assert key_manager.get_model("openai") is None
+
+    def test_provider_not_found(self, key_manager: KeyManager) -> None:
+        """Test returns None for non-existent provider."""
+        assert key_manager.get_model("nonexistent") is None
+
+    def test_case_insensitive(self, key_manager: KeyManager) -> None:
+        """Test provider name is case insensitive."""
+        key_manager.store_key("OpenAI", "sk-test", model="gpt-4")
+        assert key_manager.get_model("openai") == "gpt-4"
+        assert key_manager.get_model("OPENAI") == "gpt-4"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: get_base_url
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestGetBaseUrl:
+    """Tests for the get_base_url method."""
+
+    def test_base_url_set(self, key_manager: KeyManager) -> None:
+        """Test returns base_url when configured."""
+        key_manager.store_key("ollama", None, base_url="http://localhost:11434")
+        assert key_manager.get_base_url("ollama") == "http://localhost:11434"
+
+    def test_base_url_not_set(self, key_manager: KeyManager) -> None:
+        """Test returns None when base_url not configured."""
+        key_manager.store_key("openai", "sk-test")
+        assert key_manager.get_base_url("openai") is None
+
+    def test_provider_not_found(self, key_manager: KeyManager) -> None:
+        """Test returns None for non-existent provider."""
+        assert key_manager.get_base_url("nonexistent") is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: get_provider_config
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestGetProviderConfig:
+    """Tests for the get_provider_config method."""
+
+    def test_full_config(self, key_manager: KeyManager) -> None:
+        """Test returns full config with all fields."""
+        key_manager.store_key("openai", "sk-test123", model="gpt-4", base_url="https://api.openai.com")
+        config = key_manager.get_provider_config("openai")
+
+        assert config is not None
+        assert config["api_key"] == "sk-test123"
+        assert config["model"] == "gpt-4"
+        assert config["base_url"] == "https://api.openai.com"
+
+    def test_partial_config(self, key_manager: KeyManager) -> None:
+        """Test returns config with some fields None."""
+        key_manager.store_key("openai", "sk-test")
+        config = key_manager.get_provider_config("openai")
+
+        assert config is not None
+        assert config["api_key"] == "sk-test"
+        assert config["model"] is None
+        assert config["base_url"] is None
+
+    def test_provider_not_found(self, key_manager: KeyManager) -> None:
+        """Test returns None for non-existent provider."""
+        assert key_manager.get_provider_config("nonexistent") is None
+
+    def test_api_key_decrypted(self, key_manager: KeyManager) -> None:
+        """Test that returned api_key is decrypted."""
+        key_manager.store_key("openai", "sk-secret-key-12345")
+        config = key_manager.get_provider_config("openai")
+
+        assert config is not None
+        # Should return decrypted key
+        assert config["api_key"] == "sk-secret-key-12345"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: store_key with model and base_url
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestStoreKeyWithModelAndBaseUrl:
+    """Tests for the updated store_key method with model and base_url."""
+
+    def test_store_key_with_model(self, key_manager: KeyManager) -> None:
+        """Test storing key with model."""
+        key_manager.store_key("openai", "sk-test", model="gpt-4")
+        assert key_manager.get_key("openai") == "sk-test"
+        assert key_manager.get_model("openai") == "gpt-4"
+
+    def test_store_key_with_base_url(self, key_manager: KeyManager) -> None:
+        """Test storing key with base_url."""
+        key_manager.store_key("openai", "sk-test", base_url="https://custom.openai.com")
+        assert key_manager.get_key("openai") == "sk-test"
+        assert key_manager.get_base_url("openai") == "https://custom.openai.com"
+
+    def test_store_key_with_all_options(self, key_manager: KeyManager) -> None:
+        """Test storing key with model and base_url."""
+        key_manager.store_key("openai", "sk-test", model="gpt-4", base_url="https://api.openai.com")
+
+        assert key_manager.get_key("openai") == "sk-test"
+        assert key_manager.get_model("openai") == "gpt-4"
+        assert key_manager.get_base_url("openai") == "https://api.openai.com"
+
+    def test_ollama_no_key_required(self, key_manager: KeyManager) -> None:
+        """Test that ollama can be stored without API key."""
+        key_manager.store_key("ollama", None, model="llama3", base_url="http://localhost:11434")
+
+        assert key_manager.get_model("ollama") == "llama3"
+        assert key_manager.get_base_url("ollama") == "http://localhost:11434"
+
+    def test_openai_requires_key(self, key_manager: KeyManager) -> None:
+        """Test that openai still requires a key."""
+        with pytest.raises(KeyValidationError, match="API key is required"):
+            key_manager.store_key("openai", None)
+
+    def test_update_model_only(self, key_manager: KeyManager) -> None:
+        """Test updating model while preserving existing key."""
+        key_manager.store_key("openai", "sk-original")
+        key_manager.store_key("openai", "sk-original", model="gpt-4")
+
+        # Key should be preserved
+        assert key_manager.get_key("openai") == "sk-original"
+        # Model should be updated
+        assert key_manager.get_model("openai") == "gpt-4"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# New Method Tests: Backward Compatibility Migration
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestBackwardCompatibilityMigration:
+    """Tests for backward compatibility with old format."""
+
+    def test_migrate_old_string_format(self, temp_config_dir: Path) -> None:
+        """Test that old string format is migrated to new format."""
+        # Create an old format keys file (string values instead of nested dicts)
+        keys_file = temp_config_dir / "keys.json"
+        old_format_data = {"_version": 1, "openai": "sk-plain-text-key", "anthropic": "sk-ant-key"}
+
+        with keys_file.open("w", encoding="utf-8") as f:
+            json.dump(old_format_data, f)
+
+        # Load with KeyManager - should migrate automatically
+        km = KeyManager(config_dir=temp_config_dir)
+
+        # Keys should be accessible
+        assert km.get_key("openai") == "sk-plain-text-key"
+        assert km.get_key("anthropic") == "sk-ant-key"
+
+    def test_get_key_after_migration(self, temp_config_dir: Path) -> None:
+        """Test that get_key works after migrating old format."""
+        keys_file = temp_config_dir / "keys.json"
+        old_format_data = {"openai": "sk-old-key"}
+
+        with keys_file.open("w", encoding="utf-8") as f:
+            json.dump(old_format_data, f)
+
+        km = KeyManager(config_dir=temp_config_dir)
+        key = km.get_key("openai")
+        assert key == "sk-old-key"
+
+    def test_list_keys_after_migration(self, temp_config_dir: Path) -> None:
+        """Test that list_keys works after migrating old format."""
+        keys_file = temp_config_dir / "keys.json"
+        old_format_data = {"openai": "sk-proj-abc123", "anthropic": "sk-ant-xyz789"}
+
+        with keys_file.open("w", encoding="utf-8") as f:
+            json.dump(old_format_data, f)
+
+        km = KeyManager(config_dir=temp_config_dir)
+        keys = km.list_keys()
+
+        assert "openai" in keys
+        assert "anthropic" in keys
+        assert keys["openai"] == "sk-...123"
+        assert keys["anthropic"] == "sk-...789"
