@@ -171,6 +171,8 @@ class TestUserPersonaEntity:
         assert persona.role == "Administrator"
         assert len(persona.characteristics) == 3
         assert len(persona.goals) == 3
+        assert "Technical" in persona.characteristics
+        assert "Manage users" in persona.goals
 
     def test_user_persona_defaults(self) -> None:
         """Test UserPersonaEntity default values."""
@@ -208,6 +210,8 @@ class TestFeatureEntity:
         assert feature.priority == "must"
         assert len(feature.dependencies) == 1
         assert len(feature.user_stories) == 2
+        assert "feature_password_reset" in feature.dependencies
+        assert "As a user, I want to register with email" in feature.user_stories
 
     def test_feature_defaults(self) -> None:
         """Test FeatureEntity default values."""
@@ -255,6 +259,8 @@ class TestTechnicalConstraintEntity:
             value="AES256",
         )
         assert constraint.unit is None
+        assert constraint.constraint_type == "security"
+        assert constraint.value == "AES256"
 
 
 class TestSuccessMetricEntity:
@@ -358,6 +364,8 @@ class TestDataEntity:
         assert data.entity_type == EntityType.DATA_ENTITY
         assert len(data.attributes) == 5
         assert len(data.relationships) == 2
+        assert "order_id" in data.attributes
+        assert "belongs_to Customer" in data.relationships
 
 
 # =============================================================================
@@ -407,6 +415,8 @@ class TestEntityContext:
         )
         assert len(context.user_personas) == 1
         assert len(context.features) == 1
+        assert context.user_personas[0].name == "Administrator"
+        assert context.features[0].name == "Authentication"
 
     def test_entity_context_product_info(self) -> None:
         """Test EntityContext with product info."""
@@ -510,6 +520,7 @@ class TestEntityContext:
             data_entities=[data_entity],
         )
 
+        # Assert all entity lists have correct length
         assert len(context.user_personas) == 1
         assert len(context.features) == 1
         assert len(context.technical_constraints) == 1
@@ -518,6 +529,26 @@ class TestEntityContext:
         assert len(context.business_goals) == 1
         assert len(context.integrations) == 1
         assert len(context.data_entities) == 1
+
+        # Assert entity types are correct
+        assert context.user_personas[0].entity_type == EntityType.USER_PERSONA
+        assert context.features[0].entity_type == EntityType.FEATURE
+        assert context.technical_constraints[0].entity_type == EntityType.TECHNICAL_CONSTRAINT
+        assert context.success_metrics[0].entity_type == EntityType.SUCCESS_METRIC
+        assert context.non_functional_reqs[0].entity_type == EntityType.NON_FUNCTIONAL_REQ
+        assert context.business_goals[0].entity_type == EntityType.BUSINESS_GOAL
+        assert context.integrations[0].entity_type == EntityType.INTEGRATION
+        assert context.data_entities[0].entity_type == EntityType.DATA_ENTITY
+
+        # Assert entity names are correct
+        assert context.user_personas[0].name == "Admin"
+        assert context.features[0].name == "Test"
+        assert context.technical_constraints[0].name == "Performance"
+        assert context.success_metrics[0].name == "Test"
+        assert context.non_functional_reqs[0].name == "Test"
+        assert context.business_goals[0].name == "Test"
+        assert context.integrations[0].name == "Test"
+        assert context.data_entities[0].name == "User"
 
 
 # =============================================================================
@@ -796,6 +827,10 @@ class TestEntityContextHelperMethods:
         )
         all_entities = context.get_all_entities()
         assert len(all_entities) == 2
+        # Verify both entities are present
+        entity_names = {e.name for e in all_entities}
+        assert "Admin" in entity_names
+        assert "Test" in entity_names
 
     def test_get_entities_by_type(self) -> None:
         """Test get_entities_by_type method."""
@@ -813,6 +848,7 @@ class TestEntityContextHelperMethods:
         personas = context.get_entities_by_type(EntityType.USER_PERSONA)
         assert len(personas) == 1
         assert personas[0].name == "Admin"
+        assert personas[0].entity_type == EntityType.USER_PERSONA
 
     def test_to_json_from_json(self) -> None:
         """Test to_json and from_json methods."""
@@ -831,3 +867,4 @@ class TestEntityContextHelperMethods:
         restored = EntityContext.from_json(json_str)
         assert restored.source_prompt == original.source_prompt
         assert len(restored.user_personas) == 1
+        assert restored.user_personas[0].name == "Admin"
