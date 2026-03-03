@@ -194,8 +194,11 @@ class DeterministicExtractor:
             role = "User"
             persona_name = name
 
-        # Generate unique ID
-        entity_id = f"user_persona_{role.lower().replace(' ', '_')}"
+        # Generate unique ID using both role and persona name to avoid collisions
+        # This ensures "admin named John" and "admin named Jane" get different IDs
+        name_slug = persona_name.lower().replace(' ', '_')
+        role_slug = role.lower().replace(' ', '_')
+        entity_id = f"user_persona_{role_slug}_{name_slug}"
 
         return UserPersonaEntity(
             id=entity_id,
