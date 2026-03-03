@@ -487,11 +487,41 @@ class EntityRegistry:
             if name_lower and name_lower not in registry._aliases:
                 registry._aliases[name_lower] = entity.id
         
-        # Restore relationships
+        # Restore relationships with validation
         relationships = data.get("relationships", {})
         for entity_id, related_ids in relationships.items():
-            if entity_id in registry._entities:
-                registry._relationships[entity_id] = related_ids
+            # Only restore relationships if the source entity exists
+            if entity_id not in registry._entities:
+                logger.warning(
+                    "Skipping relationships for non-existent entity '%s'", 
+                    entity_id
+                )
+                continue
+            
+            # Validate and filter related IDs to only include existing entities
+            valid_related_ids = [
+                rid for rid in related_ids 
+                if rid in registry._entities
+            ]
+            
+            # Log if some relationships were invalid
+            if len(valid_related_ids) != len(related_ids):
+                invalid_ids = set(related_ids) - set(valid_related_ids)
+                logger.warning(
+                    "Skipping relationships to non-existent entities: %s", 
+                    invalid_ids
+                )
+            
+            # Store relationships for this entity
+            if valid_related_ids:
+                registry._relationships[entity_id] = valid_related_ids
+                
+                # Ensure bidirectional relationships are established
+                # This is needed because to_dict stores both directions,
+                # but we validate each direction independently
+                for related_id in valid_related_ids:
+                    if entity_id not in registry._relationships[related_id]:
+                        registry._relationships[related_id].append(entity_id)
         
         logger.info("Created registry from dict with %d entities", 
                    len(registry._entities))
