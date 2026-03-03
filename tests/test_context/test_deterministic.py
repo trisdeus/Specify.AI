@@ -280,7 +280,7 @@ class TestEdgeCases:
         personas = [e for e in entities if e.entity_type == EntityType.USER_PERSONA]
         # Should have at most one user persona for "John"
         names = [p.name for p in personas]
-        assert len(set(names)) <= 2  # Allow for variations
+        assert len(set(names)) == 1
 
     def test_multiple_entity_types(self) -> None:
         """Test extraction of multiple entity types."""
